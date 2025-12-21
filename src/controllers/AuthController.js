@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const User = require('../models/User.model');
-const { registerSchema } = require('../utils/validationSchemas');
+const { registerSchema, loginSchema } = require('../utils/validationSchemas');
 
 // Tạo JWT
 const signToken = (userId) => {
@@ -65,6 +65,53 @@ module.exports.register = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Đăng ký thất bại, vui lòng thử lại',
+        });
+    }
+}
+
+// Đăng nhập người dùng
+module.exports.login = async (req, res) => {
+    try {
+        // Validate dữ liệu đầu vào
+        const validationData = loginSchema.parse(req.body);
+        // Tìm người dùng theo email
+        const user = await User.findOne({ email: validationData.email }).select('+password');
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email hoặc mật khẩu không đúng',
+            });
+        }
+
+        // So sánh mật khẩu
+        const isMatch = await user.comparePassword(validationData.password);
+        if (!isMatch) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email hoặc mật khẩu không đúng',
+            });
+        }
+
+        // Cập nhật last_logged
+        user.last_logged = Date.now();
+        await user.save({
+            validateBeforeSave: false,
+        });
+
+        // Gửi token về client
+        sendTokenResponse(user, 200, res);
+    }
+    catch (error) {
+        if(error instanceof z.ZodError) {
+            return res.status(400).json({
+                success: false,
+                message: error.issues.map(e => e.message).join(', '),
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: 'Đăng nhập thất bại',
         });
     }
 }

@@ -24,8 +24,8 @@ const registerSchema = z.object({
 // Schema xác thực cho đăng nhập người dùng
 const loginSchema = z.object({
     email: z.string()
-        .email('Email không hợp lệ')
         .trim()
+        .email('Email không hợp lệ')
         .toLowerCase(),
     password: z.string()
         .min(6, 'Mật khẩu phải ít nhất 6 ký tự'),
