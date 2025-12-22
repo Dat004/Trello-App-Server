@@ -1,13 +1,17 @@
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
+
 const User = require('../models/User.model');
+const errorHandler = require('../middlewares/errorMiddleware');
 const { registerSchema, loginSchema } = require('../utils/validationSchemas');
 
 // Tạo JWT
 const signToken = (userId) => {
     return jwt.sign(
-        { sub: userId },
-            process.env.JWT_SECRET,
+        {
+            sub: userId
+        },
+        process.env.JWT_SECRET,
         {
             expiresIn: process.env.JWT_EXPIRES_IN || '7d',
             issuer: 'trello-api',
@@ -30,7 +34,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 }
 
 // Đăng ký người dùng
-module.exports.register = async (req, res) => {
+module.exports.register = async (req, res, next) => {
     try {
         // Validate dữ liệu đầu vào
         const validatedData = registerSchema.parse(req.body);
@@ -38,10 +42,9 @@ module.exports.register = async (req, res) => {
         // Kiểm tra email đã tồn tại chưa
         const existingUser = await User.findOne({ email: validatedData.email });
         if (existingUser) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email đã được sử dụng',
-            });
+            const err = new Error('Email đã được sử dụng');
+            err.statusCode = 400;
+            return next(err);
         }
 
         // Tạo người dùng mới
@@ -55,17 +58,7 @@ module.exports.register = async (req, res) => {
         sendTokenResponse(newUser, 201, res);
     }
     catch(error) {
-        if(error instanceof z.ZodError) {
-            return res.status(400).json({
-                success: false,
-                message: error.issues.map(e => e.message).join(', '),
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Đăng ký thất bại, vui lòng thử lại',
-        });
+        next(error);
     }
 }
 
@@ -102,16 +95,6 @@ module.exports.login = async (req, res) => {
         sendTokenResponse(user, 200, res);
     }
     catch (error) {
-        if(error instanceof z.ZodError) {
-            return res.status(400).json({
-                success: false,
-                message: error.issues.map(e => e.message).join(', '),
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Đăng nhập thất bại',
-        });
+        next(error);
     }
 }
