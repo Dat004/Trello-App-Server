@@ -109,8 +109,8 @@ const UserSchema = new Schema({
 });
 
 // Cập nhật updated_at khi có thay đổi
-UserSchema.pre('save', function () {
-    this.updated_at = Date.now();
+UserSchema.pre('findOneAndUpdate', function () {
+  this.set({ updated_at: Date.now() });
 });
 
 // Hash password chỉ khi có password và bị thay đổi
