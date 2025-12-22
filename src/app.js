@@ -14,6 +14,7 @@ app.use(helmet()); // Security headers
 app.use(cors()); // Enable CORS
 app.use(express.json()); // Parse JSON request bodies
 app.use(morgan('dev')); // HTTP request logger
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 
 // Simple route for testing
 app.get('/', (req, res) => {
