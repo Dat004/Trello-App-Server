@@ -32,12 +32,6 @@ const protect = async (req, res, next) => {
             return next(err);
         }
 
-        // Cập nhật last_logged
-        currentUser.last_logged = Date.now();
-        await currentUser.save({
-            validateBeforeSave: false,
-        });
-
         // Gán user vào req để các middleware/controller sau có thể sử dụng
         req.user = currentUser;
         next();
