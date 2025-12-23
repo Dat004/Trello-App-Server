@@ -24,11 +24,23 @@ const signToken = (userId) => {
 const sendTokenResponse = (user, statusCode, res) => {
     const token = signToken(user._id);
 
+    // Set httpOnly cookie
+    const cookieOptions = {
+        expires: new Date(Date.now() + (process.env.JWT_EXPIRES_IN.split('d')[0] || 7) * 24 * 60 * 60 * 1000), // Mặc định 7 ngày
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS ở production
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Chống CSRF, 'none' nếu frontend/backend khác domain
+        path: '/', // Cookie áp dụng cho toàn bộ trang web
+    }
+
+    res.cookie('token', token, cookieOptions);
+    user.password = undefined; // Không gửi password về client
+
     res.status(statusCode).json({
         success: true,
-        token,
+        message: 'Xác thực thành công',
         data: {
-            user
+            user,
         },
     });
 }
@@ -63,7 +75,7 @@ module.exports.register = async (req, res, next) => {
 }
 
 // Đăng nhập người dùng
-module.exports.login = async (req, res) => {
+module.exports.login = async (req, res, next) => {
     try {
         // Validate dữ liệu đầu vào
         const validationData = loginSchema.parse(req.body);

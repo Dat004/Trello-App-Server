@@ -4,15 +4,8 @@ const User = require('../models/User.model');
 const protect = async (req, res, next) => {
     let token;
 
-    // Lấy token từ header Authorization: Bearer <token>
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer')
-    ) {
-        token = req.headers.authorization.split(' ')[1];
-    }
-
-    console.log('Auth Middleware - Token:', token);
+    // Lấy token từ cookie
+    if(req.cookies && req.cookies.token) token = req.cookies.token;
 
     if(!token) {
         const err = new Error('Chưa xác thực, vui lòng đăng nhập để tiếp tục');
