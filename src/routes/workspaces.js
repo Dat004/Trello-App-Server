@@ -6,6 +6,9 @@ const WorkspaceController = require("../controllers/WorkspaceController");
 const { requireWorkspaceMember, requireWorkspaceAdmin } = require('../middlewares/workspaceMiddleware');
 const protect = require("../middlewares/authMiddleware");
 
+// [PATCH] /api/workspaces/:workspaces/permissions
+router.patch('/:workspaceId/permissions', protect, requireWorkspaceAdmin, WorkspaceController.updatePermissions);
+
 // [GET] /api/workspaces/:workspaceId/members
 router.get('/:workspaceId/members', protect, requireWorkspaceMember, WorkspaceController.getWorkspaceMembers);
 
