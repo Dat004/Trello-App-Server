@@ -71,9 +71,18 @@ const updateSettingsSchema = z.object({
     }).optional(),
 });
 
+const updateWorkspaceSchema = z.object({
+  name: z.string().trim().max(100, 'Tên không quá 100 ký tự').optional(),
+  description: z.string().trim().optional(),
+  color: z.string().optional(),
+  visibility: z.enum(['private', 'public']).optional(),
+  max_members: z.number().min(5, 'Giới hạn thành viên tối thiểu là 5').optional(),
+});
+
 module.exports = {
     registerSchema,
     loginSchema,
     updateInfoSchema,
     updateSettingsSchema,
+    updateWorkspaceSchema,
 };

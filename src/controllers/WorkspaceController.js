@@ -1,4 +1,5 @@
 const Workspace = require('../models/Workspace.model');
+const { updateWorkspaceSchema } = require('../utils/validationSchemas');
 
 // Tạo workspace mới
 module.exports.create = async (req, res, next) => {
@@ -39,6 +40,46 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
       success: true,
       message: 'Lấy danh sách workspace thành công',
       data: { workspaces },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// GET tất cả thành viên trong workspace
+module.exports.getWorkspaceMembers = async (req, res, next) => {
+  try {
+    const workspace = req.workspace;
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách thành viên thành công',
+      data: {
+        members: workspace.members,
+        owner: workspace.owner,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// UPDATE thông tin workspace (name, description, color, visibility, maxMembers)
+module.exports.updateWorkspace = async (req, res, next) => {
+  try {
+    const validatedData = updateWorkspaceSchema.parse(req.body);
+
+    const updatedWorkspace = await Workspace.findByIdAndUpdate(
+      req.params.workspaceId,
+      { $set: validatedData },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật workspace thành công',
+      data: { workspace: updatedWorkspace },
     });
   } catch (error) {
     next(error);
