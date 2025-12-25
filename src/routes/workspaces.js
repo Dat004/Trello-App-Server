@@ -12,6 +12,9 @@ router.patch('/:workspaceId/permissions', protect, requireWorkspaceAdmin, Worksp
 // [GET] /api/workspaces/:workspaceId/members
 router.get('/:workspaceId/members', protect, requireWorkspaceMember, WorkspaceController.getWorkspaceMembers);
 
+// [POST] /api/workspaces/:workspaceId/members
+router.post('/:workspaceId/invite', protect, requireWorkspaceMember, WorkspaceController.inviteMember);
+
 // [PATCH] /api/workspaces/:workspaceId
 router.patch('/:workspaceId', protect, requireWorkspaceAdmin, WorkspaceController.updateWorkspace);
 

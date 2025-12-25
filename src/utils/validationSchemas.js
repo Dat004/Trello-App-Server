@@ -78,6 +78,11 @@ const updatePermissionsSchema = z.object({
   canInviteMember: PermissionLevelEnum.default("admin_only"),
 });
 
+const inviteMemberSchema = z.object({
+  email: z.string().min(1, "Email không được để trống.").email({ message: "Email không hợp lệ. Vui lòng nhập lại" }).lowercase(),
+  role: z.enum(["admin", "member", "viewer"]).default("member"),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -85,4 +90,5 @@ module.exports = {
   updateSettingsSchema,
   updateWorkspaceSchema,
   updatePermissionsSchema,
+  inviteMemberSchema,
 };
