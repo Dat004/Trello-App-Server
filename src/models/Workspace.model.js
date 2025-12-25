@@ -83,6 +83,18 @@ const WorkspaceSchema = new Schema({
     enum: ["private", "public"],
     default: "private",
   },
+  permissions: {
+    canCreateBoard: {
+      type: String,
+      enum: ['admin_only', 'admin_member'], // Chỉ admin hoặc admin + member được mời
+      default: 'admin_member', // Mặc định admin + member được tạo board
+    },
+    canInviteMember: {
+      type: String,
+      enum: ['admin_only', 'admin_member'], // Chỉ admin hoặc admin + member được mời
+      default: 'admin_only', // Mặc định chỉ admin được mời
+    },
+  },
   created_at: {
     type: Date,
     default: Date.now,
@@ -94,9 +106,8 @@ const WorkspaceSchema = new Schema({
 });
 
 // Auto update updated_at
-WorkspaceSchema.pre('save', function(next) {
+WorkspaceSchema.pre('save', function() {
   this.updated_at = Date.now();
-  next();
 });
 
 WorkspaceSchema.index({ owner: 1 });
