@@ -110,3 +110,23 @@ module.exports.login = async (req, res, next) => {
         next(error);
     }
 }
+
+// Đăng xuất người dùng
+module.exports.logout = async (req, res, next) => {
+    try {
+        res.cookie('token', '', {
+            expires: new Date(0), // Hết hạn ngay lập tức
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Đăng xuất thành công',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
