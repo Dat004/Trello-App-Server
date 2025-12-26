@@ -6,8 +6,14 @@ const WorkspaceController = require("../controllers/WorkspaceController");
 const { requireWorkspaceMember, requireWorkspaceAdmin } = require('../middlewares/workspaceMiddleware');
 const protect = require("../middlewares/authMiddleware");
 
+// [PATCH] /api/workspaces/:workspaces/members/role
+router.patch('/:workspaceId/members/role', protect, requireWorkspaceAdmin, WorkspaceController.updateMemberRole);
+
 // [PATCH] /api/workspaces/:workspaces/permissions
 router.patch('/:workspaceId/permissions', protect, requireWorkspaceAdmin, WorkspaceController.updatePermissions);
+
+// [DELETE] /api/workspaces/:workspaceId/members
+router.delete('/:workspaceId/members', protect, requireWorkspaceAdmin, WorkspaceController.kickMember);
 
 // [GET] /api/workspaces/:workspaceId/members
 router.get('/:workspaceId/members', protect, requireWorkspaceMember, WorkspaceController.getWorkspaceMembers);

@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const mongoose = require("mongoose");
 
 // Schema xác thực cho đăng ký người dùng
 const registerSchema = z.object({
@@ -79,8 +80,29 @@ const updatePermissionsSchema = z.object({
 });
 
 const inviteMemberSchema = z.object({
-  email: z.string().min(1, "Email không được để trống.").email({ message: "Email không hợp lệ. Vui lòng nhập lại" }).lowercase(),
+  email: z
+    .string()
+    .min(1, "Email không được để trống.")
+    .email({ message: "Email không hợp lệ. Vui lòng nhập lại" })
+    .lowercase(),
   role: z.enum(["admin", "member", "viewer"]).default("member"),
+});
+
+const objectJd = z
+  .string()
+  .refine((val) => mongoose.Types.ObjectId.isValid(val), {
+    message: "ID của user không hợp lệ",
+  });
+
+const updateMemberRole = z.object({
+  member_id: objectJd,
+  role: z.enum(["admin", "member"], {
+    message: "Dữ liệu nhận vào phải là: admin | member",
+  }),
+});
+
+const kickMember = z.object({
+  member_id: objectJd,
 });
 
 module.exports = {
@@ -91,4 +113,6 @@ module.exports = {
   updateWorkspaceSchema,
   updatePermissionsSchema,
   inviteMemberSchema,
+  updateMemberRole,
+  kickMember,
 };

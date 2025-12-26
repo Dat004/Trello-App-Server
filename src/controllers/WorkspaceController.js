@@ -1,6 +1,8 @@
 const Workspace = require("../models/Workspace.model");
 const User = require("../models/User.model");
 const {
+  kickMember,
+  updateMemberRole,
   inviteMemberSchema,
   updateWorkspaceSchema,
   updatePermissionsSchema,
@@ -110,7 +112,9 @@ module.exports.updatePermissions = async (req, res, next) => {
 
 exports.inviteMember = async (req, res, next) => {
   try {
-    const { email: emailLower, role = "member" } = inviteMemberSchema.parse(req.body);
+    const { email: emailLower, role = "member" } = inviteMemberSchema.parse(
+      req.body
+    );
 
     const workspace = req.workspace;
 
@@ -184,6 +188,109 @@ exports.inviteMember = async (req, res, next) => {
       success: true,
       message: "Gửi lời mời thành công",
       data: { workspace },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports.updateMemberRole = async (req, res, next) => {
+  try {
+    const { member_id, role } = updateMemberRole.parse(req.body);
+    const workspace = req.workspace;
+
+    // Không cho phép cập nhật role owner
+    if (workspace.owner.toString() === member_id) {
+      const err = new Error("Không thể thay đổi role của owner workspace.");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const currentMembers = workspace.members.filter(
+      (m) => m.user.toString() !== member_id
+    );
+    const updatingMember = workspace.members.find(
+      (m) => m.user.toString() === member_id
+    );
+
+    const isTargetAdmin = updatingMember.role === "admin";
+    const isCurrentUserOwner =
+      workspace.owner.toString() === req.user._id.toString();
+
+    // Không cho phép Thăng / giáng cấp nếu cùng là admin
+    if(isTargetAdmin && !isCurrentUserOwner) {
+      const err = new Error("Chỉ owner mới có thể thay đổi role của admin khác.");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    updatingMember.role = role;
+    const newWorkspace = await Workspace.findByIdAndUpdate(
+      req.params.workspaceId,
+      { $set: { members: [...currentMembers, updatingMember] } },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật role thành viên thành công",
+      data: { workspace: newWorkspace },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.kickMember = async (req, res, next) => {
+  try {
+    const { member_id } = kickMember.parse(req.body);
+    const workspace = req.workspace;
+
+    // Không cho kick owner
+    if (workspace.owner.toString() === member_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Không thể xóa owner khỏi workspace",
+      });
+    }
+
+    const memberIndex = workspace.members.findIndex(
+      (m) => m.user.toString() === member_id
+    );
+
+    if (memberIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Thành viên không tồn tại trong workspace",
+      });
+    }
+
+    const targetMember = workspace.members[memberIndex];
+    const isTargetAdmin = targetMember.role === "admin";
+    const isCurrentUserOwner =
+      workspace.owner.toString() === req.user._id.toString();
+
+    // Chỉ owner mới kick được admin
+    if (isTargetAdmin && !isCurrentUserOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "Chỉ owner mới có thể xóa admin khỏi workspace",
+      });
+    }
+
+    // Xóa member
+    workspace.members.splice(memberIndex, 1);
+
+    const newWorkspace = await Workspace.findByIdAndUpdate(
+      req.params.workspaceId,
+      { $set: { members: [...workspace.members] } },
+      { new: true, runValidators: true }
+    )
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa thành viên khỏi workspace thành công",
+      data: { newWorkspace },
     });
   } catch (error) {
     next(error);
