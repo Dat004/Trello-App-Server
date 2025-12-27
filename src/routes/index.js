@@ -1,11 +1,14 @@
 const workspaceRouter = require('./workspaces');
+const boardRouter = require('./boards');
 const authRouter = require('./auth');
 const meRouter = require('./users');
-const errorHandler = require('../middlewares/errorMiddleware');
 
 function router(app) {
     // Workspace routes
     app.use('/api/workspaces', workspaceRouter);
+
+    // Board routes
+    app.use('/api/boards', boardRouter);
 
     // Auth routes
     app.use('/api/auth', authRouter);

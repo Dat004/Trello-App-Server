@@ -105,6 +105,18 @@ const kickMember = z.object({
   member_id: objectJd,
 });
 
+const boardSchema = z.object({
+  title: z
+    .string()
+    .min(1, "Board phải có tiêu đề")
+    .max(100, "Tiêu đề không quá 100 ký tự")
+    .trim(),
+  description: z.string().optional().or(z.literal("")),
+  color: z.string().trim(),
+  visibility: z.enum(["private", "workspace", "public"]).default("workspace"),
+  workspaceId: objectJd,
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -115,4 +127,5 @@ module.exports = {
   inviteMemberSchema,
   updateMemberRole,
   kickMember,
+  boardSchema,
 };
