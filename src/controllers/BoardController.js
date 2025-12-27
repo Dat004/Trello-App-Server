@@ -22,7 +22,9 @@ module.exports.create = async (req, res, next) => {
           ? ["admin", "member"]
           : ["admin"];
       if (!allowedCreate.includes(req.userRoleInWorkspace)) {
-        const err = new Error("Bạn không có quyền tạo board trong workspace này");
+        const err = new Error(
+          "Bạn không có quyền tạo board trong workspace này"
+        );
         err.statusCode = 403;
         return next(err);
       }
@@ -63,6 +65,21 @@ module.exports.getMyBoards = async (req, res, next) => {
       success: true,
       message: "Lấy danh sách board thành công",
       data: { boards },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Chi tiết board
+exports.getBoardById = async (req, res, next) => {
+  try {
+    const board = req.board;
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy chi tiết board thành công",
+      data: { board },
     });
   } catch (error) {
     next(error);
