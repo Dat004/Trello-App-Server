@@ -2,7 +2,7 @@ const Workspace = require("../models/Workspace.model");
 const Board = require("../models/Board.model");
 
 // Middleware check quyền truy cập board
-module.exports.requireBoardAccess = async (req, res, next) => {
+const requireBoardAccess = async (req, res, next) => {
   try {
     const board = await Board.findById(req.params.boardId);
 
@@ -46,3 +46,5 @@ module.exports.requireBoardAccess = async (req, res, next) => {
     next(error);
   }
 };
+
+module.exports = requireBoardAccess;
