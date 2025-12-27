@@ -116,7 +116,8 @@ module.exports.updateBoard = async (req, res, next) => {
     next(error);
   }
 };
-W
+
+// Xóa board
 module.exports.destroy = async (req, res, next) => {
   try {
     await Board.findByIdAndDelete(req.params.boardId);
@@ -127,5 +128,59 @@ module.exports.destroy = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+// Archive board (ẩn khỏi list)
+exports.archiveBoard = async (req, res, next) => {
+  try {
+    const board = req.board;
+
+    if (board.archived) {
+      const err = new Error('Board đã được lưu trữ');
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const updatedBoard = await Board.findByIdAndUpdate(
+      req.params.boardId,
+      { archived: true },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Board đã được lưu trữ thành công',
+      data: { board: updatedBoard },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Unarchive board (khôi phục)
+exports.unarchiveBoard = async (req, res, next) => {
+  try {
+    const board = req.board;
+
+    if (!board.archived) {
+      const err = new Error('Board chưa được lưu trữ');
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const updatedBoard = await Board.findByIdAndUpdate(
+      req.params.boardId,
+      { archived: false },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Board đã được khôi phục thành công',
+      data: { board: updatedBoard },
+    });
+  } catch (error) {
+    next(error);
   }
 };

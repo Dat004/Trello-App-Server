@@ -11,6 +11,12 @@ const {
 
 router.delete("/:boardId", protect, requireBoardAccess, requireOwnerBoard, BoardController.destroy);
 
+// [PATCH] /api/boards/:boardId/archive
+router.patch('/:boardId/archive', protect, requireBoardAccess, requireBoardAdmin, BoardController.archiveBoard);
+
+// [PATCH] /api/boards/:boardId/unarchive
+router.patch('/:boardId/unarchive', protect, requireBoardAccess, requireBoardAdmin, BoardController.unarchiveBoard);
+
 // [PATCH] /api/boards/:boardId
 router.patch("/:boardId", protect, requireBoardAccess, requireBoardAdmin, BoardController.updateBoard);
 
