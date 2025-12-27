@@ -43,6 +43,10 @@ const BoardSchema = new mongoose.Schema({
         enum: ["admin", "member", "viewer"],
         default: "member",
       },
+      joinedAt: {
+        type: Date,
+        default: Date.now,
+      },
     },
   ],
   visibility: {

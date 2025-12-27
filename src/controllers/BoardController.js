@@ -1,6 +1,7 @@
 const Board = require("../models/Board.model");
 const {
   boardSchema,
+  inviteMemberSchema,
   updateBoardsSchema,
 } = require("../utils/validationSchemas");
 
@@ -179,6 +180,80 @@ exports.unarchiveBoard = async (req, res, next) => {
       success: true,
       message: 'Board đã được khôi phục thành công',
       data: { board: updatedBoard },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Invite member vào board
+module.exports.inviteMemberToBoard = async (req, res, next) => {
+  try {
+    const { email, role } = inviteMemberSchema.parse(req.body);
+    const board = req.board;
+
+    // Kiểm tra email đã tồn tại trong hệ thống
+    const invitedUser = await User.findOne({ email: email });
+    if (!invitedUser) {
+      const err = new Error('Email này chưa được đăng ký tài khoản. Không thể mời.');
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    // Check trùng trong board.members
+    const existingMember = board.members.find(m => m.user.toString() === invitedUser._id.toString());
+    if (existingMember) {
+      const err = new Error('Người dùng này đã là thành viên board');
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    board.members.push({
+      user: invitedUser._id,
+      role,
+    });
+
+    await board.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Mời thành viên vào board thành công',
+      data: { board },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Kick member khỏi board
+module.exports.kickMemberFromBoard = async (req, res, next) => {
+  try {
+    const { memberUserId } = req.body;
+    const board = req.board;
+
+    // Không cho kick owner
+    if (board.owner.toString() === memberUserId) {
+      const err = new Error('Không thể kick owner khỏi board');
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const memberIndex = board.members.findIndex(
+      m => m.user.toString() === memberUserId
+    );
+    if (memberIndex === -1) {
+      const err = new Error('Thành viên không tồn tại trong board');
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    board.members.splice(memberIndex, 1);
+    await board.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Kick thành viên khỏi board thành công',
+      data: { board },
     });
   } catch (error) {
     next(error);

@@ -9,6 +9,13 @@ const {
   requireOwnerBoard,
 } = require("../middlewares/boardMiddleware");
 
+// [POST] /api/boards/:boardId/invite
+router.post('/:boardId/invite', protect, requireBoardAccess, requireBoardAdmin, BoardController.inviteMemberToBoard);
+
+// [DELETE] /api/boards/:boardId/members
+router.delete('/:boardId/members', protect, requireBoardAccess, requireBoardAdmin, BoardController.kickMemberFromBoard);
+
+// [DELETE] /api/boards/:boardId
 router.delete("/:boardId", protect, requireBoardAccess, requireOwnerBoard, BoardController.destroy);
 
 // [PATCH] /api/boards/:boardId/archive
