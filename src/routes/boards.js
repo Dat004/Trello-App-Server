@@ -1,9 +1,15 @@
 const express = require("express");
 const router = express.Router();
 
-const requireBoardAccess = require("../middlewares/boardMiddleware");
 const BoardController = require("../controllers/BoardController");
 const protect = require("../middlewares/authMiddleware");
+const {
+  requireBoardAccess,
+  requireBoardAdmin,
+} = require("../middlewares/boardMiddleware");
+
+// [PATCH] /api/boards/:boardId
+router.patch("/:boardId", protect, requireBoardAccess, requireBoardAdmin, BoardController.updateBoard);
 
 // [POST] /api/boards/create
 router.post("/create", protect, BoardController.create);

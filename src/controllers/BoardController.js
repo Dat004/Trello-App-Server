@@ -1,5 +1,8 @@
 const Board = require("../models/Board.model");
-const { boardSchema } = require("../utils/validationSchemas");
+const {
+  boardSchema,
+  updateBoardsSchema,
+} = require("../utils/validationSchemas");
 
 module.exports.create = async (req, res, next) => {
   try {
@@ -72,7 +75,7 @@ module.exports.getMyBoards = async (req, res, next) => {
 };
 
 // Chi tiết board
-exports.getBoardById = async (req, res, next) => {
+module.exports.getBoardById = async (req, res, next) => {
   try {
     const board = req.board;
 
@@ -80,6 +83,34 @@ exports.getBoardById = async (req, res, next) => {
       success: true,
       message: "Lấy chi tiết board thành công",
       data: { board },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Cập nhật boards
+module.exports.updateBoard = async (req, res, next) => {
+  try {
+    const validatedData = updateBoardsSchema.parse(req.body);
+
+    const updatedBoard = await Board.findByIdAndUpdate(
+      req.params.boardId,
+      { $set: validatedData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedBoard) {
+      return res.status(404).json({
+        success: false,
+        message: "Board không tồn tại",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật board thành công",
+      data: { board: updatedBoard },
     });
   } catch (error) {
     next(error);
