@@ -54,11 +54,11 @@ const requireBoardAdmin = async (req, res, next) => {
 
     const isOwner = board.owner.toString() === req.user._id.toString();
     const isAdmin = board.members.some(
-      m => m.user.toString() === req.user._id.toString() && m.role === 'admin'
+      (m) => m.user.toString() === req.user._id.toString() && m.role === "admin"
     );
 
     if (!isOwner && !isAdmin) {
-      const err = new Error('Bạn cần quyền admin để cập nhật board này');
+      const err = new Error("Bạn cần quyền admin để cập nhật board này");
       err.statusCode = 403;
       return next(err);
     }
@@ -69,7 +69,26 @@ const requireBoardAdmin = async (req, res, next) => {
   }
 };
 
+// Middleware check user là owner của board
+const requireOwnerBoard = (req, res, next) => {
+  try {
+    const board = req.board;
+    const userId = req.user._id.toString();
+
+    if (userId !== board.owner.toString()) {
+      const err = new Error("Chỉ owner mới có quyền thực hiện hành động này");
+      err.statusCode = 403;
+      return next(err);
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   requireBoardAccess,
   requireBoardAdmin,
+  requireOwnerBoard,
 };

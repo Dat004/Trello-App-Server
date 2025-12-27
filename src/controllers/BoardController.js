@@ -116,3 +116,16 @@ module.exports.updateBoard = async (req, res, next) => {
     next(error);
   }
 };
+W
+module.exports.destroy = async (req, res, next) => {
+  try {
+    await Board.findByIdAndDelete(req.params.boardId);
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa board thành công",
+    });
+  } catch (err) {
+    next(err);
+  }
+};

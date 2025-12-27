@@ -6,7 +6,10 @@ const protect = require("../middlewares/authMiddleware");
 const {
   requireBoardAccess,
   requireBoardAdmin,
+  requireOwnerBoard,
 } = require("../middlewares/boardMiddleware");
+
+router.delete("/:boardId", protect, requireBoardAccess, requireOwnerBoard, BoardController.destroy);
 
 // [PATCH] /api/boards/:boardId
 router.patch("/:boardId", protect, requireBoardAccess, requireBoardAdmin, BoardController.updateBoard);
