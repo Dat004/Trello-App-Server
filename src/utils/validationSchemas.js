@@ -91,7 +91,7 @@ const inviteMemberSchema = z.object({
 const objectJd = z
   .string()
   .refine((val) => mongoose.Types.ObjectId.isValid(val), {
-    message: "ID của user không hợp lệ",
+    message: "ID không hợp lệ",
   });
 
 const updateMemberRole = z.object({
@@ -129,6 +129,14 @@ const updateBoardsSchema = z.object({
   visibility: z.enum(["private", "workspace", "public"]).default("workspace"),
 });
 
+const listSchema = z.object({
+  title: z.string()
+    .trim()
+    .min(1, "List phải có tiêu đề")
+    .max(100, "Tiêu đề không quá 100 ký tự"),
+  color: z.string().trim().optional(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -141,4 +149,5 @@ module.exports = {
   kickMember,
   boardSchema,
   updateBoardsSchema,
+  listSchema,
 };
