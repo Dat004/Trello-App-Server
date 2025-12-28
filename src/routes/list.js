@@ -1,5 +1,5 @@
 const express = require("express");
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 const { requireBoardAccess, requireBoardAdmin } = require("../middlewares/boardMiddleware");
 const ListController = require("../controllers/ListController");
