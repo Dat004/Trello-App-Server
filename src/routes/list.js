@@ -1,9 +1,15 @@
 const express = require("express");
 const router = express.Router();
 
-const { requireBoardAccess } = require("../middlewares/boardMiddleware");
+const { requireBoardAccess, requireBoardAdmin } = require("../middlewares/boardMiddleware");
 const ListController = require("../controllers/ListController");
 const protect = require("../middlewares/authMiddleware");
+
+// [DELETE] /api/boards/:boardId/lists/:listId
+router.delete('/:listId', protect, requireBoardAccess, requireBoardAdmin, ListController.deleteList);
+
+// [PATCH] /api/boards/:boardId/lists/:listId
+router.patch('/:listId', protect, requireBoardAccess, requireBoardAdmin, ListController.updateList);
 
 // [POST] /api/boards/:boardId/lists/create
 router.post('/create', protect, requireBoardAccess, ListController.create);

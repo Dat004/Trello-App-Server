@@ -39,7 +39,56 @@ module.exports.getBoardLists = async (req, res, next) => {
       success: true,
       message: "Lấy danh sách list thành công",
       data: { lists },
-    });0
+    });
+    0;
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update list
+module.exports.updateList = async (req, res, next) => {
+  try {
+    const validatedData = listSchema.parse(req.body);
+
+    const updatedList = await List.findByIdAndUpdate(
+      req.params.listId,
+      { $set: validatedData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedList) {
+      const err = new Error("List không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật list thành công",
+      data: { list: updatedList },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Xóa list
+module.exports.deleteList = async (req, res, next) => {
+  try {
+    const deletedList = await List.findByIdAndDelete(req.params.listId);
+
+    if (!deletedList) {
+      const err = new Error("List không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa list thành công",
+      data: null,
+    });
   } catch (error) {
     next(error);
   }
