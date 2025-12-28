@@ -137,6 +137,19 @@ const listSchema = z.object({
   color: z.string().trim().optional(),
 });
 
+const createCardSchema = z.object({
+  title: z.string().trim().min(1, 'Tiêu đề không được rỗng').max(200, 'Tiêu đề không quá 200 ký tự'),
+  description: z.string().trim().optional(),
+  due_date: z.coerce.date().nullable().optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  labels: z.array(
+    z.object({
+      name: z.string().trim().min(1),
+      color: z.string(),
+    })
+  ).optional()
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -150,4 +163,5 @@ module.exports = {
   boardSchema,
   updateBoardsSchema,
   listSchema,
+  createCardSchema,
 };
