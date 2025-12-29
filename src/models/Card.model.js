@@ -41,11 +41,15 @@ const CardSchema = new mongoose.Schema({
   labels: [{
     name: String,
     color: String,
+  }, {
+    _id: true
   }],
   checklist: [{
     text: String,
     completed: { type: Boolean, default: false },
     created_at: { type: Date, default: Date.now },
+  }, {
+    _id: true
   }],
   members: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -57,6 +61,8 @@ const CardSchema = new mongoose.Schema({
     reply_to: { type: mongoose.Schema.Types.ObjectId, ref: 'Card.comments' },
     mentions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     created_at: { type: Date, default: Date.now },
+  }, {
+    _id: true
   }],
   creator: {
     type: mongoose.Schema.Types.ObjectId,
@@ -72,6 +78,8 @@ const CardSchema = new mongoose.Schema({
     message: String,
     uploaded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     created_at: { type: Date, default: Date.now },
+  }, {
+    _id: true
   }],
   archived: {
     type: Boolean,
