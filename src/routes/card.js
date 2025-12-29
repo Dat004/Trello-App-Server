@@ -29,6 +29,15 @@ router.patch(
   CardController.updateInfo
 );
 
+// [PATCH] /api/boards/:boardId/lists/:listId/cards/:cardId/move
+router.patch(
+  "/:cardId/move",
+  protect,
+  requireBoardAccess,
+  requireCardAccess,
+  CardController.moveCard
+);
+
 // [POST] /api/boards/:boardId/lists/:listId/cards/create
 router.post("/create", protect, requireBoardAccess, CardController.create);
 

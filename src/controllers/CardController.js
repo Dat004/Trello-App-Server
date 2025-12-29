@@ -103,3 +103,160 @@ module.exports.destroy = async (req, res, next) => {
     next(err);
   }
 };
+
+// Move card
+module.exports.moveCard = async (req, res, next) => {
+  try {
+    const { prevCardId, nextCardId, destinationListId } = req.body;
+    const { cardId } = req.params;
+
+    if (!cardId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu cardId",
+      });
+    }
+
+    // Lấy card hiện tại
+    const currentCard = await Card.findById(cardId);
+    if (!currentCard) {
+      return res.status(404).json({
+        success: false,
+        message: "Card không tồn tại",
+      });
+    }
+
+    const boardId = currentCard.board.toString();
+    const sourceListId = currentCard.list.toString();
+    const targetListId = destinationListId || sourceListId;
+
+    // Validate list đích cùng board
+    const targetList = await List.findOne({
+      _id: targetListId,
+      board: boardId,
+    });
+
+    if (!targetList) {
+      return res.status(400).json({
+        success: false,
+        message: "List đích không hợp lệ hoặc khác board",
+      });
+    }
+
+    let newPos;
+
+    // Case 1: kéo lên đầu (no prev, có next)
+    if (!prevCardId && nextCardId) {
+      const nextCard = await Card.findOne({
+        _id: nextCardId,
+        list: targetListId,
+        board: boardId,
+      });
+
+      if (!nextCard) {
+        return res.status(400).json({
+          success: false,
+          message: "nextCardId không hợp lệ",
+        });
+      }
+
+      newPos = nextCard.pos / 2;
+    }
+
+    // Case 2: kéo xuống cuối (có prev, no next)
+    else if (prevCardId && !nextCardId) {
+      const prevCard = await Card.findOne({
+        _id: prevCardId,
+        list: targetListId,
+        board: boardId,
+      });
+
+      if (!prevCard) {
+        return res.status(400).json({
+          success: false,
+          message: "prevCardId không hợp lệ",
+        });
+      }
+
+      newPos = prevCard.pos + 65536;
+    }
+
+    // Case 3: kéo vào giữa (có cả prev và next)
+    else if (prevCardId && nextCardId) {
+      const [prevCard, nextCard] = await Promise.all([
+        Card.findOne({
+          _id: prevCardId,
+          list: targetListId,
+          board: boardId,
+        }),
+        Card.findOne({
+          _id: nextCardId,
+          list: targetListId,
+          board: boardId,
+        }),
+      ]);
+
+      if (!prevCard || !nextCard) {
+        return res.status(400).json({
+          success: false,
+          message: "prevCardId hoặc nextCardId không hợp lệ",
+        });
+      }
+
+      // Conflict detection (stale drag)
+      if (prevCard.pos >= nextCard.pos) {
+        return res.status(409).json({
+          success: false,
+          message: "Thứ tự card không hợp lệ (dữ liệu đã thay đổi)",
+        });
+      }
+
+      newPos = (prevCard.pos + nextCard.pos) / 2;
+    }
+
+    // Case 4: không thay đổi vị trí
+    else {
+      return res.status(200).json({
+        success: true,
+        message: "Vị trí không thay đổi",
+        data: { card: currentCard },
+      });
+    }
+
+    const updatedCard = await Card.findOneAndUpdate(
+      {
+        _id: cardId,
+        board: boardId,
+      },
+      {
+        $set: {
+          list: targetListId,
+          pos: newPos,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedCard) {
+      return res.status(404).json({
+        success: false,
+        message: "Không thể cập nhật card",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Di chuyển card thành công",
+      data: {
+        cardId: updatedCard._id,
+        listId: updatedCard.list,
+        pos: updatedCard.pos,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
