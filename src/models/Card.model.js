@@ -24,9 +24,10 @@ const CardSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
-  order: {
+  pos: {
     type: Number,
     required: true,
+    default: 0,
   },
   due_date: {
     type: Date,
