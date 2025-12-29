@@ -8,8 +8,8 @@ const protect = require("../middlewares/authMiddleware");
 // [DELETE] /api/boards/:boardId/lists/:listId
 router.delete('/:listId', protect, requireBoardAccess, requireBoardAdmin, ListController.deleteList);
 
-// [PATCH] /api/boards/:boardId/lists/order
-router.patch('/order', protect, requireBoardAccess, requireBoardAdmin, ListController.updateList);
+// [PATCH] /api/boards/:boardId/lists/move
+router.patch('/move', protect, requireBoardAccess, requireBoardAdmin, ListController.updateListPosition);
 
 // [PATCH] /api/boards/:boardId/lists/:listId
 router.patch('/:listId', protect, requireBoardAccess, requireBoardAdmin, ListController.updateList);

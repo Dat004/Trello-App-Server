@@ -7,15 +7,15 @@ module.exports.create = async (req, res, next) => {
     const { title, color } = listSchema.parse(req.body);
     const boardId = req.params.boardId;
 
-    // Lấy order lớn nhất hiện tại trong board + 1
-    const lastList = await List.findOne({ board: boardId }).sort({ order: -1 });
-    const newOrder = lastList ? lastList.order + 1 : 0;
+    // max pos + 65536
+    const lastList = await List.findOne({ board: boardId }).sort({ pos: -1 });
+    const newPos = lastList ? lastList.pos + 65536 : 65536;
 
     const newList = await List.create({
       title,
       color: color || "gray",
       board: boardId,
-      order: newOrder,
+      pos: newPos,
     });
 
     res.status(201).json({
@@ -32,7 +32,7 @@ module.exports.create = async (req, res, next) => {
 module.exports.getBoardLists = async (req, res, next) => {
   try {
     const lists = await List.find({ board: req.params.boardId }).sort({
-      order: 1,
+      pos: 1,
     });
 
     res.status(200).json({
@@ -94,65 +94,106 @@ module.exports.deleteList = async (req, res, next) => {
   }
 };
 
-// Update order lists
-module.exports.updateListsOrder = async (req, res, next) => {
+// Update pos lists
+module.exports.updateListPosition = async (req, res, next) => {
   try {
-    const { lists } = req.body;
+    const { prevListId, nextListId } = req.body;
+    const listId = req.params.listId;
     const boardId = req.params.boardId;
 
-    if (!Array.isArray(lists) || lists.length === 0) {
-      const err = new Error("Dữ liệu lists không hợp lệ");
-      err.statusCode = 400;
-      return next(err);
+    if (!listId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu listId",
+      });
     }
 
-    // Lấy tất cả list hiện tại của board để validate
-    const currentLists = await List.find({ board: boardId });
-    const currentListIds = currentLists.map((l) => l._id.toString());
-
-    // Validate: array gửi lên phải có đúng số lượng và id list của board
-    if (lists.length !== currentLists.length) {
-      const err = new Error("Số lượng list không khớp");
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    const sentListIds = lists.map((l) => l.id);
-    const hasDuplicateId = new Set(sentListIds).size !== sentListIds.length;
-    const hasInvalidId = sentListIds.some((id) => !currentListIds.includes(id));
-
-    if (hasDuplicateId || hasInvalidId) {
-      const err = new Error("Danh sách list ID không hợp lệ hoặc trùng lặp");
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    // Validate order: 0 đến length-1, không duplicate
-    const orders = lists.map((l) => l.order);
-    const orderSet = new Set(orders);
-    if (
-      orderSet.size !== orders.length ||
-      Math.min(...orders) !== 0 ||
-      Math.max(...orders) !== orders.length - 1
-    ) {
-      const err = new Error(
-        "Order không hợp lệ (phải từ 0 đến n-1, không trùng)"
-      );
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    // Bulk update order
-    const updatePromises = lists.map(({ id, order }) => {
-      return List.findByIdAndUpdate(id, { $set: order }, { new: true });
+    // Lấy list đang drag
+    const currentList = await List.findOne({
+      _id: listId,
+      board: boardId,
     });
 
-    const updatedLists = await Promise.all(updatePromises);
+    if (!currentList) {
+      return res.status(404).json({
+        success: false,
+        message: "List không tồn tại trong board",
+      });
+    }
+
+    let newPos;
+
+    // Case 1: kéo lên đầu (no prev, có next)
+    if (!prevListId && nextListId) {
+      const nextList = await List.findOne({ _id: nextListId, board: boardId });
+      if (!nextList) {
+        return res.status(400).json({
+          success: false,
+          message: "nextListId không hợp lệ",
+        });
+      }
+      newPos = nextList.pos / 2;
+    }
+    // Case 2: kéo xuống cuối (có prev, no next)
+    else if (prevListId && !nextListId) {
+      const prevList = await List.findOne({ _id: prevListId, board: boardId });
+      if (!prevList) {
+        return res.status(400).json({
+          success: false,
+          message: "prevListId không hợp lệ",
+        });
+      }
+      newPos = prevList.pos + 65536;
+    }
+    // Case 3: kéo vào giữa (có cả prev và next)
+    else if (prevListId && nextListId) {
+      const [prevList, nextList] = await Promise.all([
+        List.findOne({ _id: prevListId, board: boardId }),
+        List.findOne({ _id: nextListId, board: boardId }),
+      ]);
+
+      if (!prevList || !nextList) {
+        return res.status(400).json({
+          success: false,
+          message: "prevListId hoặc nextListId không hợp lệ",
+        });
+      }
+
+      newPos = (prevList.pos + nextList.pos) / 2;
+    }
+    // Case 4: không thay đổi vị trí
+    else {
+      return res.status(200).json({
+        success: true,
+        message: "Vị trí không thay đổi",
+        data: { list: currentList },
+      });
+    }
+
+    // Update chỉ 1 list
+    const updatedList = await List.findOneAndUpdate(
+      { _id: listId, board: boardId },
+      { $set: { pos: newPos } },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedList) {
+      return res.status(404).json({
+        success: false,
+        message: "Không thể cập nhật list",
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: "Cập nhật thứ tự list thành công",
-      data: { lists: updatedLists.sort((a, b) => a.order - b.order) },
+      message: "Cập nhật vị trí list thành công",
+      data: {
+        listId: updatedList._id,
+        pos: updatedList.pos,
+      },
     });
   } catch (error) {
     next(error);
