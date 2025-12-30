@@ -55,32 +55,12 @@ const CardSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   }],
-  comments: [{
-    text: String,
-    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    reply_to: { type: mongoose.Schema.Types.ObjectId, ref: 'Card.comments' },
-    mentions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    created_at: { type: Date, default: Date.now },
-  }, {
-    _id: true
-  }],
   creator: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
     index: true,
   },
-  attachments: [{
-    name: String,
-    url: String,
-    type: String,
-    size: Number,
-    message: String,
-    uploaded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    created_at: { type: Date, default: Date.now },
-  }, {
-    _id: true
-  }],
   archived: {
     type: Boolean,
     default: false,
@@ -103,10 +83,9 @@ CardSchema.pre('findOneAndUpdate', function(next) {
 });
 
 // Indexing
-CardSchema.index({ list: 1, order: 1 });
-CardSchema.index({ board: 1, archived: 1 });
-CardSchema.index({ members: 1 });
-CardSchema.index({ due_date: 1 });
-CardSchema.index({ 'comments.mentions': 1 });
+cardSchema.index({ list: 1, pos: 1 });
+cardSchema.index({ board: 1, archived: 1 });
+cardSchema.index({ members: 1 });
+cardSchema.index({ due_date: 1 });
 
 module.exports = mongoose.model('Card', CardSchema);
