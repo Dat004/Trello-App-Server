@@ -1,4 +1,5 @@
 const workspaceRouter = require('./workspaces');
+const commentRouter = require('./comment');
 const boardRouter = require('./boards');
 const cardRouter = require('./card');
 const listRouter = require('./list');
@@ -6,6 +7,9 @@ const authRouter = require('./auth');
 const meRouter = require('./users');
 
 function router(app) {
+    // Comment card routes
+    app.use('/api/boards/:boardId/cards/:cardId/comments', commentRouter)
+
     // Card list board routes
     app.use('/api/boards/:boardId/lists/:listId/cards', cardRouter)
 
