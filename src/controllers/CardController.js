@@ -260,3 +260,132 @@ module.exports.moveCard = async (req, res, next) => {
     next(error);
   }
 };
+
+module.exports.addChecklistItem = async (req, res, next) => {
+  try {
+    const { text } = req.body;
+    if (!text || text.trim().length === 0) {
+      const err = new Error("Nội dung checklist không được để trống.");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const newChecklistItem = {
+      text: text.trim(),
+      completed: false,
+    };
+
+    const card = await Card.findByIdAndUpdate(
+      req.params.cardId,
+      { $push: { checklist: newChecklistItem } },
+      { new: true, runValidators: true }
+    );
+    if (!card) {
+      const err = new Error("Không tìm thấy card.");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Thêm checklist mới thành công",
+      data: { card },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports.toggleChecklistItem = async (req, res, next) => {
+  try {
+    const { checklistId } = req.body;
+    const { cardId, boardId } = req.params;
+
+    if (!checklistId) {
+      const err = new Error("checklistId không hợp lệ");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const card = await Card.findOne({
+      _id: cardId,
+      board: boardId,
+    });
+    if (!card) {
+      const err = new Error("Không tìm thấy card.");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    // Kiểm tra checklist được click có tồn tại trong danh sách checklists không
+    const item = card.checklist.id(checklistId);
+    if (!item) {
+      const err = new Error("Không tìm thấy checklist.");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const updatedCard = await Card.findOneAndUpdate(
+      {
+        _id: cardId,
+        board: boardId,
+      },
+      {
+        $set: {
+          "checklist.$[elem].completed": !item.completed,
+        },
+      },
+      {
+        arrayFilters: [{ "elem._id": checklistId }],
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật trạng thái checklist thành công",
+      data: {
+        card: updatedCard,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports.destroyChecklistItem = async (req, res, next) => {
+  try {
+    const { checklistId } = req.body;
+    if (!checklistId) {
+      const err = new Error("checklistId không hợp lệ");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const updatedCard = await Card.findByIdAndUpdate(
+      req.params.cardId,
+      {
+        $pull: {
+          checklist: { _id: checklistId },
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedCard) {
+      return res.status(404).json({
+        success: false,
+        message: "Card không tồn tại",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa checklist item thành công",
+      data: { card: updatedCard },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

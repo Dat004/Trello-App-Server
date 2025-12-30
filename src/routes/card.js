@@ -9,6 +9,33 @@ const {
   requireCardManage,
 } = require("../middlewares/cardMiddleware");
 
+// [POST] /api/boards/:boardId/lists/:listId/cards/:cardId/checklist
+router.post(
+  "/:cardId/checklist",
+  protect,
+  requireBoardAccess,
+  requireCardAccess,
+  CardController.addChecklistItem
+);
+
+// [PATCH] /api/boards/:boardId/lists/:listId/cards/:cardId/checklist
+router.patch(
+  "/:cardId/checklist",
+  protect,
+  requireBoardAccess,
+  requireCardAccess,
+  CardController.toggleChecklistItem
+);
+
+// [DELETE] /api/boards/:boardId/lists/:listId/cards/:cardId/checklist
+router.delete(
+  "/:cardId/checklist",
+  protect,
+  requireBoardAccess,
+  requireCardAccess,
+  CardController.destroyChecklistItem
+);
+
 // [DELETE] /api/boards/:boardId/lists/:listId/cards/:cardId
 router.delete(
   "/:cardId",
