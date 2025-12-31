@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+
 const AttachmentSchema = new mongoose.Schema({
   card: {
     type: mongoose.Schema.Types.ObjectId,
@@ -28,6 +30,8 @@ const AttachmentSchema = new mongoose.Schema({
   },
   size: {
     type: Number,
+    min: [0, "Size phải lớn hơn hoặc bằng 0"],
+    max: [MAX_FILE_SIZE, "Size không được vượt quá 10MB"],
     default: 0,
   },
   message: {
