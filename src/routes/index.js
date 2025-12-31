@@ -1,3 +1,4 @@
+const attachmentRouter = require('./attachment');
 const workspaceRouter = require('./workspaces');
 const commentRouter = require('./comment');
 const boardRouter = require('./boards');
@@ -7,6 +8,9 @@ const authRouter = require('./auth');
 const meRouter = require('./users');
 
 function router(app) {
+    // Attachment card routes
+    app.use('/api/boards/:boardId/cards/:cardId/attachments', attachmentRouter)
+
     // Comment card routes
     app.use('/api/boards/:boardId/cards/:cardId/comments', commentRouter)
 

@@ -130,7 +130,8 @@ const updateBoardsSchema = z.object({
 });
 
 const listSchema = z.object({
-  title: z.string()
+  title: z
+    .string()
     .trim()
     .min(1, "List phải có tiêu đề")
     .max(100, "Tiêu đề không quá 100 ký tự"),
@@ -138,16 +139,35 @@ const listSchema = z.object({
 });
 
 const cardSchema = z.object({
-  title: z.string().trim().min(1, 'Tiêu đề không được rỗng').max(200, 'Tiêu đề không quá 200 ký tự'),
+  title: z
+    .string()
+    .trim()
+    .min(1, "Tiêu đề không được rỗng")
+    .max(200, "Tiêu đề không quá 200 ký tự"),
   description: z.string().trim().optional(),
   due_date: z.coerce.date().nullable().optional(),
-  priority: z.enum(['low', 'medium', 'high']).optional(),
-  labels: z.array(
-    z.object({
-      name: z.string().trim().min(1),
-      color: z.string(),
-    })
-  ).optional()
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  labels: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        color: z.string(),
+      })
+    )
+    .optional(),
+});
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+export const attachmentInputSchema = z.object({
+  name: z.string().trim(),
+  url: z.string().trim().url("URL không hợp lệ"),
+  type: z.string().default("file"),
+  size: z.coerce
+    .number()
+    .min(0, "Size phải >= 0")
+    .max(MAX_FILE_SIZE, "Size không được vượt quá 20MB")
+    .default(0),
+  message: z.string().trim().optional().default(""),
 });
 
 module.exports = {
@@ -164,4 +184,5 @@ module.exports = {
   updateBoardsSchema,
   listSchema,
   cardSchema,
+  attachmentInputSchema,
 };
