@@ -83,9 +83,9 @@ CardSchema.pre('findOneAndUpdate', function(next) {
 });
 
 // Indexing
-cardSchema.index({ list: 1, pos: 1 });
-cardSchema.index({ board: 1, archived: 1 });
-cardSchema.index({ members: 1 });
-cardSchema.index({ due_date: 1 });
+CardSchema.index({ list: 1, pos: 1 });
+CardSchema.index({ board: 1, archived: 1 });
+CardSchema.index({ members: 1 });
+CardSchema.index({ due_date: 1 });
 
 module.exports = mongoose.model('Card', CardSchema);

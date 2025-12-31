@@ -158,7 +158,7 @@ const cardSchema = z.object({
 });
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-export const attachmentInputSchema = z.object({
+const attachmentInputSchema = z.object({
   name: z.string().trim(),
   url: z.string().trim().url("URL không hợp lệ"),
   type: z.string().default("file"),

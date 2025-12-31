@@ -63,7 +63,7 @@ module.exports.getCommentsByCard = async (req, res, next) => {
   }
 };
 
-exports.destroyComment = async (req, res, next) => {
+module.exports.destroyComment = async (req, res, next) => {
   try {
     await Comment.findByIdAndDelete(req.params.commentId);
 
