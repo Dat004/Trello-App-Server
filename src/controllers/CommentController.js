@@ -62,3 +62,17 @@ module.exports.getCommentsByCard = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.destroyComment = async (req, res, next) => {
+  try {
+    await Comment.findByIdAndDelete(req.params.commentId);
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa comment thành công",
+      data: null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

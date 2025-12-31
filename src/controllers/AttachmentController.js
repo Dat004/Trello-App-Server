@@ -6,7 +6,7 @@ module.exports.addAttachment = async (req, res, next) => {
   try {
     const validatedData = attachmentInputSchema.parse(req.body);
     const card = req.card;
-    
+
     const attachmentData = {
       ...validatedData,
       card: card._id,
@@ -48,6 +48,20 @@ module.exports.getAttachmentsByCard = async (req, res, next) => {
         nextSkip: parseInt(skip) + attachments.length,
         total,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports.destroyAttachment = async (req, res, next) => {
+  try {
+    await Attachment.findByIdAndDelete(req.params.attachmentId);
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa attachment thành công",
+      data: null,
     });
   } catch (error) {
     next(error);

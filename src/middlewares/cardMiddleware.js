@@ -1,3 +1,5 @@
+const Attachment = require("../models/Attachment.model");
+const Comment = require("../models/Comment.model");
 const Card = require("../models/Card.model");
 
 // Kiểm tra quyền truy cập card
@@ -32,9 +34,7 @@ const requireCardManage = async (req, res, next) => {
     const card = req.card;
 
     if (card.board.toString() !== board._id) {
-      const err = new Error(
-        "Không tìm thất board."
-      );
+      const err = new Error("Không tìm thất board.");
       err.statusCode = 404;
       return next(err);
     }
@@ -59,7 +59,59 @@ const requireCardManage = async (req, res, next) => {
   }
 };
 
+// Kiểm tra quyền quản lý content card (comments/attachments)
+const requireContentManager = async (req, res, next) => {
+  try {
+    const { commentId, attachmentId } = req.params;
+    const { board, card, user } = req;
+
+    if (!card || !card.board) {
+      return res.status(500).json({
+        success: false,
+        message: "Thiếu card context",
+      });
+    }
+
+    let item;
+    let authorField;
+
+    if (commentId) {
+      item = await Comment.findOne({ _id: commentId, card: card._id });
+      authorField = "author";
+    } else if (attachmentId) {
+      item = await Attachment.findOne({ _id: attachmentId, card: card._id });
+      authorField = "uploaded_by";
+    }
+
+    if (!item) {
+      const err = new Error("Nội dung không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const userId = user._id;
+
+    const isBoardOwner = board.owner.equals(userId);
+    const isBoardAdmin = board.members.some(
+      (m) => m.user.equals(userId) && m.role === "admin"
+    );
+    const isAuthor = item[authorField].equals(userId);
+
+    if (!isBoardOwner && !isBoardAdmin && !isAuthor) {
+      const err = new Error("Bạn không có quyền quản lý nội dung này");
+      err.statusCode = 403;
+      return next(err);
+    }
+
+    req.deleteItem = item;
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   requireCardAccess,
   requireCardManage,
+  requireContentManager,
 };
