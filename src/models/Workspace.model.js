@@ -49,6 +49,7 @@ const WorkspaceSchema = new Schema({
     type: Number,
     default: 10, // Free workspace limit
     min: [5, "Giới hạn thành viên tối thiểu là 5"],
+    max: [50, "Giới hạn thành viên tối đa là 50"],
   },
   invites: [
     {
