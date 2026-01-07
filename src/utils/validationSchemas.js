@@ -7,7 +7,6 @@ const registerSchema = z.object({
   email: z.string().trim().email("Email không hợp lệ").toLowerCase(),
   password: z.string().trim().min(6, "Mật khẩu phải ít nhất 6 ký tự"),
   bio: z.string().optional().or(z.literal("")), // Cho phép rỗng
-  avatar: z.string().url().optional().or(z.literal("")), // Cho phép rỗng
 });
 
 // Schema xác thực cho đăng nhập người dùng
@@ -16,15 +15,16 @@ const loginSchema = z.object({
   password: z.string().min(6, "Mật khẩu phải ít nhất 6 ký tự"),
 });
 
+const avatarSchema = z.object({
+  url: z.string().url(),
+  public_id: z.string().trim().nullable().optional(),
+});
+
 // Schema xác thực cho cập nhật thông tin người dùng
 const updateInfoSchema = z.object({
   full_name: z.string().trim().min(1, "Họ và tên là bắt buộc"),
   bio: z.string().optional().or(z.literal("")),
-  avatar: z
-    .string()
-    .url("Avatar phải là một URL hợp lệ")
-    .optional()
-    .or(z.literal("")),
+  avatar: avatarSchema.optional(),
 });
 
 const updateSettingsSchema = z.object({
@@ -69,6 +69,7 @@ const updateWorkspaceSchema = z.object({
   max_members: z
     .number()
     .min(5, "Giới hạn thành viên tối thiểu là 5")
+    .max(50, "Giới hạn thành viên tối đa là 50")
     .optional(),
 });
 

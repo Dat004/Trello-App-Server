@@ -1,4 +1,5 @@
 const Workspace = require("../models/Workspace.model");
+const Board = require("../models/Board.model");
 const User = require("../models/User.model");
 const {
   kickMember,
@@ -11,14 +12,13 @@ const {
 // Tạo workspace mới
 module.exports.create = async (req, res, next) => {
   try {
-    const { name, description, color, visibility, maxMembers } = req.body;
+    const { name, description, color, max_members } = req.body;
 
     const newWorkspace = await Workspace.create({
       name,
-      description: description || "",
-      color: color || "bg-blue-500",
-      visibility: visibility || "private",
-      maxMembers: maxMembers || 10,
+      description: description,
+      color: color,
+      max_members: max_members,
       owner: req.user._id,
       members: [{ user: req.user._id, role: "admin" }],
     });
@@ -26,7 +26,12 @@ module.exports.create = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: "Tạo workspace thành công",
-      data: { workspace: newWorkspace },
+      data: {
+        workspace: {
+          ...newWorkspace.toObject(),
+          board_count: 0,
+        },
+      },
     });
   } catch (error) {
     next(error);
@@ -36,9 +41,39 @@ module.exports.create = async (req, res, next) => {
 // Lấy tất cả các workspaces
 module.exports.getMyWorkspaces = async (req, res, next) => {
   try {
-    const workspaces = await Workspace.find({
-      $or: [{ owner: req.user._id }, { "members.user": req.user._id }],
-    }).sort({ updatedAt: -1 });
+    const workspaces = await Workspace.aggregate([
+      // Lấy workspaces mà user là owner hoặc là member
+      {
+        $match: {
+          $or: [{ owner: req.user._id }, { "members.user": req.user._id }],
+        },
+      },
+
+      // Join với Board để lấy các board thuộc workspace này
+      {
+        $lookup: {
+          from: "boards",
+          localField: "_id",
+          foreignField: "workspace",
+          as: "boards",
+        },
+      },
+
+      // Số lượng board
+      {
+        $addFields: {
+          board_count: { $size: "$boards" },
+        },
+      },
+
+      {
+        $unset: "boards", // Xóa boards
+      },
+
+      {
+        $sort: { updated_at: -1 },
+      },
+    ]);
 
     res.status(200).json({
       success: true,
@@ -53,13 +88,17 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
 // GET tất cả thành viên trong workspace
 module.exports.getWorkspaceMembers = async (req, res, next) => {
   try {
-    const workspace = req.workspace;
+    const workspace = await Workspace.findById(req.params.workspaceId).populate(
+      "members.user",
+      "avatar full_name email"
+    );
+    const validMembers = workspace.members.filter(m => m.user !== null);
 
     res.status(200).json({
       success: true,
       message: "Lấy danh sách thành viên thành công",
       data: {
-        members: workspace.members,
+        members: validMembers,
         owner: workspace.owner,
       },
     });
@@ -68,7 +107,7 @@ module.exports.getWorkspaceMembers = async (req, res, next) => {
   }
 };
 
-// UPDATE thông tin workspace (name, description, color, visibility, maxMembers)
+// UPDATE thông tin workspace (name, description, color, visibility, max_members)
 module.exports.updateWorkspace = async (req, res, next) => {
   try {
     const validatedData = updateWorkspaceSchema.parse(req.body);
@@ -79,10 +118,19 @@ module.exports.updateWorkspace = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
+    const boardCount = await Board.countDocuments({
+      workspace: req.params.workspaceId,
+    });
+
     res.status(200).json({
       success: true,
       message: "Cập nhật workspace thành công",
-      data: { workspace: updatedWorkspace },
+      data: {
+        workspace: {
+          ...updatedWorkspace.toObject(),
+          board_count: boardCount,
+        },
+      },
     });
   } catch (error) {
     next(error);
@@ -96,14 +144,16 @@ module.exports.updatePermissions = async (req, res, next) => {
 
     const updatedWorkspace = await Workspace.findByIdAndUpdate(
       req.params.workspaceId,
-      { $set: { permissions: { ...validatedData } } },
+      { $set: { permissions: validatedData } },
       { new: true, runValidators: true }
-    );
+    ).select("permissions");
 
     res.status(200).json({
       success: true,
       message: "Cập nhật quyền hạn thành công",
-      data: { workspace: updatedWorkspace },
+      data: {
+        permissions: updatedWorkspace.permissions,
+      },
     });
   } catch (error) {
     next(error);
@@ -169,7 +219,7 @@ exports.inviteMember = async (req, res, next) => {
     const pendingCount = workspace.invites.filter(
       (i) => i.status === "pending"
     ).length;
-    if (workspace.members.length + pendingCount >= workspace.maxMembers) {
+    if (workspace.members.length + pendingCount >= workspace.max_members) {
       return res.status(400).json({
         success: false,
         message: "Workspace đã đạt giới hạn thành viên",
@@ -206,9 +256,6 @@ module.exports.updateMemberRole = async (req, res, next) => {
       return next(err);
     }
 
-    const currentMembers = workspace.members.filter(
-      (m) => m.user.toString() !== member_id
-    );
     const updatingMember = workspace.members.find(
       (m) => m.user.toString() === member_id
     );
@@ -218,23 +265,30 @@ module.exports.updateMemberRole = async (req, res, next) => {
       workspace.owner.toString() === req.user._id.toString();
 
     // Không cho phép Thăng / giáng cấp nếu cùng là admin
-    if(isTargetAdmin && !isCurrentUserOwner) {
-      const err = new Error("Chỉ owner mới có thể thay đổi role của admin khác.");
+    if (isTargetAdmin && !isCurrentUserOwner) {
+      const err = new Error(
+        "Chỉ owner mới có thể thay đổi role của admin khác."
+      );
       err.statusCode = 400;
       return next(err);
     }
 
-    updatingMember.role = role;
-    const newWorkspace = await Workspace.findByIdAndUpdate(
-      req.params.workspaceId,
-      { $set: { members: [...currentMembers, updatingMember] } },
-      { new: true, runValidators: true }
+    await Workspace.updateOne(
+      {
+        _id: req.params.workspaceId,
+        "members.user": member_id,
+      },
+      {
+        $set: {
+          "members.$.role": role,
+        },
+      }
     );
 
+    // Trả về gọn nhẹ
     res.status(200).json({
       success: true,
-      message: "Cập nhật role thành viên thành công",
-      data: { workspace: newWorkspace },
+      message: "Cập nhật role thành công",
     });
   } catch (err) {
     next(err);
@@ -279,18 +333,19 @@ exports.kickMember = async (req, res, next) => {
     }
 
     // Xóa member
-    workspace.members.splice(memberIndex, 1);
+    const result = await Workspace.updateOne(
+      { _id: req.params.workspaceId },
+      {
+        $pull: {
+          members: { user: member_id },
+        },
+      }
+    );
 
-    const newWorkspace = await Workspace.findByIdAndUpdate(
-      req.params.workspaceId,
-      { $set: { members: [...workspace.members] } },
-      { new: true, runValidators: true }
-    )
-
+    // Không cần trả về data mới, chỉ cần báo thành công
     res.status(200).json({
       success: true,
-      message: "Xóa thành viên khỏi workspace thành công",
-      data: { newWorkspace },
+      message: "Xóa thành viên thành công",
     });
   } catch (error) {
     next(error);
