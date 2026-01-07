@@ -7,6 +7,12 @@ const ListSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, "Tiêu đề không quá 100 ký tự"],
   },
+  workspace: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Workspace",
+    default: null,
+    index: true,
+  },
   board: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Board",
@@ -38,6 +44,7 @@ ListSchema.pre("findOneAndUpdate", function () {
 });
 
 // Index cho sort list trong board
-ListSchema.index({ board: 1, order: 1 });
+ListSchema.index({ board: 1, pos: 1 });
+ListSchema.index({ workspace: 1 });
 
 module.exports = mongoose.model("List", ListSchema);

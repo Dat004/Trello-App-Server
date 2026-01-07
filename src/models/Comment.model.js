@@ -14,6 +14,12 @@ const CommentSchema = new Schema({
     required: true,
     index: true,
   },
+  workspace: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Workspace",
+    default: null,
+    index: true,
+  },
   text: {
     type: String,
     required: [true, "Comment phải có nội dung"],
@@ -54,6 +60,7 @@ CommentSchema.pre("save", function (next) {
 // Indexing
 CommentSchema.index({ card: 1, created_at: -1 });
 CommentSchema.index({ board: 1 });
+CommentSchema.index({ workspace: 1 });
 CommentSchema.index({ mentions: 1 });
 
 module.exports = mongoose.model("Comment", CommentSchema);

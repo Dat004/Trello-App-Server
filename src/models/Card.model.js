@@ -24,6 +24,12 @@ const CardSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  workspace: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Workspace",
+    default: null,
+    index: true,
+  },
   pos: {
     type: Number,
     required: true,
@@ -85,6 +91,7 @@ CardSchema.pre('findOneAndUpdate', function(next) {
 // Indexing
 CardSchema.index({ list: 1, pos: 1 });
 CardSchema.index({ board: 1, archived: 1 });
+CardSchema.index({ workspace: 1 });
 CardSchema.index({ members: 1 });
 CardSchema.index({ due_date: 1 });
 
