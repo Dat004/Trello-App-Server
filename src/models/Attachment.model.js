@@ -15,6 +15,12 @@ const AttachmentSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  workspace: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Workspace",
+    default: null,
+    index: true,
+  },
   name: {
     type: String,
     required: true,
@@ -53,5 +59,6 @@ const AttachmentSchema = new mongoose.Schema({
 // Index cho query attachment theo card
 AttachmentSchema.index({ card: 1, created_at: -1 });
 AttachmentSchema.index({ board: 1 });
+AttachmentSchema.index({ workspace: 1 });
 
 module.exports = mongoose.model("Attachment", AttachmentSchema);
