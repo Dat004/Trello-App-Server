@@ -87,13 +87,13 @@ const WorkspaceSchema = new Schema({
   permissions: {
     canCreateBoard: {
       type: String,
-      enum: ['admin_only', 'admin_member'], // Chỉ admin hoặc admin + member được mời
-      default: 'admin_member', // Mặc định admin + member được tạo board
+      enum: ["admin_only", "admin_member"], // Chỉ admin hoặc admin + member được mời
+      default: "admin_member", // Mặc định admin + member được tạo board
     },
     canInviteMember: {
       type: String,
-      enum: ['admin_only', 'admin_member'], // Chỉ admin hoặc admin + member được mời
-      default: 'admin_only', // Mặc định chỉ admin được mời
+      enum: ["admin_only", "admin_member"], // Chỉ admin hoặc admin + member được mời
+      default: "admin_only", // Mặc định chỉ admin được mời
     },
   },
   created_at: {
@@ -104,14 +104,25 @@ const WorkspaceSchema = new Schema({
     type: Date,
     default: Date.now,
   },
+  deleted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deleted_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 });
 
 // Auto update updated_at
-WorkspaceSchema.pre('save', function() {
+WorkspaceSchema.pre("save", function () {
   this.updated_at = Date.now();
 });
 
-WorkspaceSchema.index({ owner: 1 });
-WorkspaceSchema.index({ 'members.user': 1 });
+WorkspaceSchema.index({ deleted_at: 1 });
+WorkspaceSchema.index({ owner: 1, deleted_at: 1 });
+WorkspaceSchema.index({ 'members.user': 1, deleted_at: 1 });
 
-module.exports = mongoose.model('Workspace', WorkspaceSchema);
+module.exports = mongoose.model("Workspace", WorkspaceSchema);

@@ -67,6 +67,16 @@ const BoardSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  deleted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deleted_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 });
 
 // Auto update updated_at
@@ -75,8 +85,9 @@ BoardSchema.pre("findOneAndUpdate", function () {
 });
 
 // Index hiệu quả
-BoardSchema.index({ owner: 1, archived: 1 });
-BoardSchema.index({ workspace: 1, archived: 1 });
-BoardSchema.index({ "members.user": 1 });
+BoardSchema.index({ deleted_at: 1 });
+BoardSchema.index({ owner: 1, deleted_at: 1 });
+BoardSchema.index({ workspace: 1, deleted_at: 1 });
+BoardSchema.index({ "members.user": 1, deleted_at: 1 });
 
 module.exports = mongoose.model("Board", BoardSchema);
