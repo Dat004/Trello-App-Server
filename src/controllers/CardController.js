@@ -23,6 +23,7 @@ module.exports.create = async (req, res, next) => {
       req.body
     );
     const listId = req.params.listId;
+    const workspaceId = req.board.workspace;
 
     const list = await List.findById(listId);
     if (!list) {
@@ -40,6 +41,7 @@ module.exports.create = async (req, res, next) => {
       description,
       list: listId,
       board: list.board,
+      workspace: workspaceId,
       pos: newPos,
       due_date: due_date || null,
       priority: priority || "medium",

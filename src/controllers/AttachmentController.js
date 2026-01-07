@@ -6,11 +6,13 @@ module.exports.addAttachment = async (req, res, next) => {
   try {
     const validatedData = attachmentInputSchema.parse(req.body);
     const card = req.card;
+    const workspaceId = req.board.workspace;
 
     const attachmentData = {
       ...validatedData,
       card: card._id,
       board: card.board,
+      workspace: workspaceId,
       uploaded_by: req.user._id,
     };
     const newAttachment = await Attachment.create(attachmentData);

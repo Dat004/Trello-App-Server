@@ -11,9 +11,12 @@ module.exports.addComment = async (req, res, next) => {
     }
 
     const card = req.card;
+    const workspaceId = req.board.workspace;
+
     const newComment = await Comment.create({
       card: card._id,
       board: card.board,
+      workspace: workspaceId,
       text: text.trim(),
       author: req.user._id,
       reply_to: reply_to || null,
