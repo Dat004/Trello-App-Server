@@ -6,6 +6,7 @@ module.exports.create = async (req, res, next) => {
   try {
     const { title, color } = listSchema.parse(req.body);
     const boardId = req.params.boardId;
+    const workspaceId = req.board.workspace;
 
     // max pos + 65536
     const lastList = await List.findOne({ board: boardId }).sort({ pos: -1 });
@@ -16,6 +17,7 @@ module.exports.create = async (req, res, next) => {
       color: color || "gray",
       board: boardId,
       pos: newPos,
+      workspace: workspaceId,
     });
 
     res.status(201).json({
