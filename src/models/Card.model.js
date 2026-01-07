@@ -1,26 +1,26 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const CardSchema = new mongoose.Schema({
   title: {
     type: String,
-    required: [true, 'Card phải có tiêu đề'],
+    required: [true, "Card phải có tiêu đề"],
     trim: true,
-    maxlength: [200, 'Tiêu đề không quá 200 ký tự'],
+    maxlength: [200, "Tiêu đề không quá 200 ký tự"],
   },
   description: {
     type: String,
-    default: '',
+    default: "",
     trim: true,
   },
   list: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'List',
+    ref: "List",
     required: true,
     index: true,
   },
   board: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Board',
+    ref: "Board",
     required: true,
     index: true,
   },
@@ -41,29 +41,37 @@ const CardSchema = new mongoose.Schema({
   },
   priority: {
     type: String,
-    enum: ['low', 'medium', 'high'],
-    default: 'medium',
+    enum: ["low", "medium", "high"],
+    default: "medium",
   },
-  labels: [{
-    name: String,
-    color: String,
-  }, {
-    _id: true
-  }],
-  checklist: [{
-    text: String,
-    completed: { type: Boolean, default: false },
-    created_at: { type: Date, default: Date.now },
-  }, {
-    _id: true
-  }],
-  members: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-  }],
+  labels: [
+    {
+      name: String,
+      color: String,
+    },
+    {
+      _id: true,
+    },
+  ],
+  checklist: [
+    {
+      text: String,
+      completed: { type: Boolean, default: false },
+      created_at: { type: Date, default: Date.now },
+    },
+    {
+      _id: true,
+    },
+  ],
+  members: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  ],
   creator: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
     required: true,
     index: true,
   },
@@ -80,19 +88,30 @@ const CardSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  deleted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deleted_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 });
 
 // Auto update updated_at
-CardSchema.pre('findOneAndUpdate', function(next) {
+CardSchema.pre("findOneAndUpdate", function (next) {
   this.set({ updated_at: Date.now() });
   next();
 });
 
 // Indexing
+CardSchema.index({ deleted_at: 1 });
 CardSchema.index({ list: 1, pos: 1 });
-CardSchema.index({ board: 1, archived: 1 });
-CardSchema.index({ workspace: 1 });
-CardSchema.index({ members: 1 });
-CardSchema.index({ due_date: 1 });
+CardSchema.index({ board: 1, deleted_at: 1 });
+CardSchema.index({ workspace: 1, deleted_at: 1 });
+CardSchema.index({ members: 1, deleted_at: 1 });
+CardSchema.index({ due_date: 1, deleted_at: 1 });
 
-module.exports = mongoose.model('Card', CardSchema);
+module.exports = mongoose.model("Card", CardSchema);

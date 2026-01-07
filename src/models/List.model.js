@@ -36,6 +36,16 @@ const ListSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  deleted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deleted_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 });
 
 // Auto update updated_at
@@ -44,7 +54,8 @@ ListSchema.pre("findOneAndUpdate", function () {
 });
 
 // Index cho sort list trong board
-ListSchema.index({ board: 1, pos: 1 });
-ListSchema.index({ workspace: 1 });
+ListSchema.index({ deleted_at: 1 });
+ListSchema.index({ board: 1, pos: 1, deleted_at: 1 });
+ListSchema.index({ workspace: 1, deleted_at: 1 });
 
 module.exports = mongoose.model("List", ListSchema);
