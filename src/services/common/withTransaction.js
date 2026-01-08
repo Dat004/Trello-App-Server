@@ -1,10 +1,11 @@
 const mongoose = require("mongoose");
 
 const withTransaction = async (handler) => {
-  const session = mongoose.startSession();
-  session.startTransaction();
+  const session = await mongoose.startSession();
 
   try {
+    session.startTransaction();
+
     const result = await handler(session);
     await session.commitTransaction();
     return result;
