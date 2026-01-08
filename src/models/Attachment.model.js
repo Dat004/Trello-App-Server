@@ -54,11 +54,22 @@ const AttachmentSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  deleted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deleted_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 });
 
 // Index cho query attachment theo card
-AttachmentSchema.index({ card: 1, created_at: -1 });
-AttachmentSchema.index({ board: 1 });
-AttachmentSchema.index({ workspace: 1 });
+AttachmentSchema.index({ deleted_at: 1 });
+AttachmentSchema.index({ card: 1, created_at: -1, deleted_at: 1 });
+AttachmentSchema.index({ board: 1, deleted_at: 1 });
+AttachmentSchema.index({ workspace: 1, deleted_at: 1 });
 
 module.exports = mongoose.model("Attachment", AttachmentSchema);

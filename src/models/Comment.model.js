@@ -49,6 +49,16 @@ const CommentSchema = new Schema({
     type: Date,
     default: Date.now,
   },
+  deleted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  deleted_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 });
 
 // Auto update updated_at
@@ -58,9 +68,10 @@ CommentSchema.pre("save", function (next) {
 });
 
 // Indexing
-CommentSchema.index({ card: 1, created_at: -1 });
-CommentSchema.index({ board: 1 });
-CommentSchema.index({ workspace: 1 });
-CommentSchema.index({ mentions: 1 });
+CommentSchema.index({ deleted_at: 1 });
+CommentSchema.index({ card: 1, created_at: -1, deleted_at: 1 });
+CommentSchema.index({ board: 1, deleted_at: 1 });
+CommentSchema.index({ workspace: 1, deleted_at: 1 });
+CommentSchema.index({ mentions: 1, deleted_at: 1 });
 
 module.exports = mongoose.model("Comment", CommentSchema);
