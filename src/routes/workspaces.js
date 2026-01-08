@@ -21,6 +21,9 @@ router.get('/:workspaceId/members', protect, requireWorkspaceMember, WorkspaceCo
 // [POST] /api/workspaces/:workspaceId/members
 router.post('/:workspaceId/invite', protect, requireWorkspaceMember, WorkspaceController.inviteMember);
 
+// [DELETE] /api/workspaces/:workspaces
+router.delete('/:workspaceId', protect, requireWorkspaceAdmin, WorkspaceController.delete);
+
 // [PATCH] /api/workspaces/:workspaceId
 router.patch('/:workspaceId', protect, requireWorkspaceAdmin, WorkspaceController.updateWorkspace);
 

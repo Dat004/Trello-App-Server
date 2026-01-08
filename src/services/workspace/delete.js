@@ -14,7 +14,11 @@ module.exports.deleteWorkspace = async (workspaceId, { actor }) => {
       deleted_at: null,
     }).session(session);
 
-    if (!workspace) return;
+    if (!workspace) {
+      const error = new Error("Workspace không tồn tại");
+      error.statusCode = 404;
+      throw error;
+    };
 
     const deleteData = {
       deleted_at: new Date(),
@@ -53,5 +57,7 @@ module.exports.deleteWorkspace = async (workspaceId, { actor }) => {
         deleteData
       ).session(session),
     ]);
+
+    return { success: true }
   });
 };
