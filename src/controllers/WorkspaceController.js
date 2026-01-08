@@ -46,7 +46,11 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
       // Lấy workspaces mà user là owner hoặc là member
       {
         $match: {
-          $or: [{ owner: req.user._id }, { "members.user": req.user._id }],
+          deleted_at: null,
+          $or: [
+            { owner: req.user._id, deleted_at: null },
+            { "members.user": req.user._id },
+          ],
         },
       },
 
@@ -89,10 +93,10 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
 // GET tất cả thành viên trong workspace
 module.exports.getWorkspaceMembers = async (req, res, next) => {
   try {
-    const workspace = await Workspace.findById(req.params.workspaceId).populate(
-      "members.user",
-      "avatar full_name email"
-    );
+    const workspace = await Workspace.findOne({
+      _id: req.params.workspaceId,
+      deleted_at: null,
+    }).populate("members.user", "avatar full_name email");
     const validMembers = workspace.members.filter((m) => m.user !== null);
 
     res.status(200).json({
@@ -113,8 +117,11 @@ module.exports.updateWorkspace = async (req, res, next) => {
   try {
     const validatedData = updateWorkspaceSchema.parse(req.body);
 
-    const updatedWorkspace = await Workspace.findByIdAndUpdate(
-      req.params.workspaceId,
+    const updatedWorkspace = await Workspace.findOneAndUpdate(
+      {
+        _id: req.params.workspaceId,
+        deleted_at: null,
+      },
       { $set: validatedData },
       { new: true, runValidators: true }
     );
@@ -170,8 +177,11 @@ module.exports.updatePermissions = async (req, res, next) => {
   try {
     const validatedData = updatePermissionsSchema.parse(req.body);
 
-    const updatedWorkspace = await Workspace.findByIdAndUpdate(
-      req.params.workspaceId,
+    const updatedWorkspace = await Workspace.findOneAndUpdate(
+      {
+        _id: req.params.workspaceId,
+        deleted_at: null,
+      },
       { $set: { permissions: validatedData } },
       { new: true, runValidators: true }
     ).select("permissions");

@@ -4,7 +4,10 @@ const Workspace = require("../models/Workspace.model");
 const requireWorkspaceMember = async (req, res, next) => {
   try {
     const workspaceId = req.params.workspaceId;
-    const workspace = await Workspace.findById(workspaceId);
+    const workspace = await Workspace.findOne({
+      _id: workspaceId,
+      deleted_at: null,
+    });
 
     if (!workspace) {
       const err = new Error("Workspace không tồn tại");
