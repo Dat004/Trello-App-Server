@@ -1,3 +1,4 @@
+const { deleteWorkspace } = require("../services/workspace/delete");
 const Workspace = require("../models/Workspace.model");
 const Board = require("../models/Board.model");
 const User = require("../models/User.model");
@@ -92,7 +93,7 @@ module.exports.getWorkspaceMembers = async (req, res, next) => {
       "members.user",
       "avatar full_name email"
     );
-    const validMembers = workspace.members.filter(m => m.user !== null);
+    const validMembers = workspace.members.filter((m) => m.user !== null);
 
     res.status(200).json({
       success: true,
@@ -134,6 +135,33 @@ module.exports.updateWorkspace = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// SOFT DELETE workspace
+module.exports.delete = async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const workspace = req.workspace;
+    const user = req.user;
+
+    // Kiểm tra quyền (Authorization)
+    if (!workspace.owner.equals(user._id)) {
+      const err = new Error("Bạn không có quyền xóa workspace này");
+      err.statusCode = 403;
+      return next(err);
+    }
+
+    await deleteWorkspace(workspaceId, {
+      actor: user._id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Xóa workspace thành công.",
+    });
+  } catch (err) {
+    next(err);
   }
 };
 
