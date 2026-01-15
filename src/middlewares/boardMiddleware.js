@@ -4,7 +4,10 @@ const Board = require("../models/Board.model");
 // Middleware check quyền truy cập board
 const requireBoardAccess = async (req, res, next) => {
   try {
-    const board = await Board.findById(req.params.boardId);
+    const board = await Board.findOne({
+      _id: req.params.boardId,
+      deleted_at: null,
+    });
 
     if (!board) {
       const err = new Error("Board không tồn tại");
@@ -12,9 +15,10 @@ const requireBoardAccess = async (req, res, next) => {
       return next(err);
     }
 
-    const isOwner = board.owner.toString() === req.user._id.toString();
-    const isBoardMember = board.members.some(
-      (m) => m.user.toString() === req.user._id.toString()
+    const userId = req.user._id;
+    const isOwner = board.owner.equals(userId);
+    const isBoardMember = board.members.some((m) =>
+      m.user.equals(userId)
     );
 
     // Personal board hoặc private board
@@ -27,9 +31,18 @@ const requireBoardAccess = async (req, res, next) => {
     }
     // Workspace board với visibility 'workspace'
     else if (board.visibility === "workspace") {
-      const workspace = await Workspace.findById(board.workspace);
-      const isWorkspaceMember = workspace.members.some(
-        (m) => m.user.toString() === req.user._id.toString()
+      const workspace = await Workspace.findOne({
+        _id: board.workspace,
+        deleted_at: null,
+      });
+      if (!workspace) {
+        const err = new Error("Workspace chứa bảng này không tồn tại");
+        err.statusCode = 404;
+        return next(err);
+      }
+
+      const isWorkspaceMember = workspace.members.some((m) =>
+        m.user.equals(userId)
       );
 
       if (!isOwner && !isBoardMember && !isWorkspaceMember) {
@@ -51,10 +64,11 @@ const requireBoardAccess = async (req, res, next) => {
 const requireBoardAdmin = async (req, res, next) => {
   try {
     const board = req.board; // từ requireBoardAccess
+    const userId = req.user._id;
 
-    const isOwner = board.owner.toString() === req.user._id.toString();
+    const isOwner = board.owner.equals(req.user._id);
     const isAdmin = board.members.some(
-      (m) => m.user.toString() === req.user._id.toString() && m.role === "admin"
+      (m) => m.user.equals(userId) && m.role === "admin"
     );
 
     if (!isOwner && !isAdmin) {
@@ -70,13 +84,44 @@ const requireBoardAdmin = async (req, res, next) => {
 };
 
 // Middleware check user là owner của board
-const requireOwnerBoard = (req, res, next) => {
+const requireOwnerBoard = async (req, res, next) => {
   try {
     const board = req.board;
-    const userId = req.user._id.toString();
+    const userId = req.user._id;
 
-    if (userId !== board.owner.toString()) {
-      const err = new Error("Chỉ owner mới có quyền thực hiện hành động này");
+    const isOwnerBoard = board.owner.equals(userId);
+
+    if (board.workspace) {
+      const workspace = await Workspace.findOne({
+        _id: board.workspace,
+        deleted_at: null,
+      }).select("owner members");
+
+      if (!workspace) {
+        const err = new Error("Workspace không tồn tại");
+        err.statusCode = 404;
+        return next(err);
+      }
+
+      const isOwnerWorkspace = workspace.owner.equals(userId);
+      const isAdminWorkspace = workspace.members.some(
+        (m) => m.user.equals(userId) && m.role === "admin"
+      );
+
+      if (!isOwnerWorkspace && !isAdminWorkspace && !isOwnerBoard) {
+        const err = new Error("Bạn không có quyền thực hiện hành động này");
+        err.statusCode = 403;
+        return next(err);
+      }
+
+      return next();
+    }
+
+    // Không có workspace chỉ cho phép owner board
+    if (!isOwnerBoard) {
+      const err = new Error(
+        "Chỉ owner board mới có quyền thực hiện hành động này"
+      );
       err.statusCode = 403;
       return next(err);
     }
