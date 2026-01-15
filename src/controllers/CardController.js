@@ -1,3 +1,4 @@
+const { deleteCard } = require("../services/card/delete");
 const Card = require("../models/Card.model");
 const List = require("../models/List.model");
 
@@ -5,7 +6,10 @@ const { cardSchema } = require("../utils/validationSchemas");
 
 module.exports.getCardsByList = async (req, res, next) => {
   try {
-    const cards = await Card.find({ list: req.params.listId }).sort({ pos: 1 });
+    const cards = await Card.find({
+      list: req.params.listId,
+      deleted_at: null,
+    }).sort({ pos: 1 });
 
     res.status(200).json({
       success: true,
@@ -23,9 +27,10 @@ module.exports.create = async (req, res, next) => {
       req.body
     );
     const listId = req.params.listId;
+    const boardId = req.params.boardId;
     const workspaceId = req.board.workspace;
 
-    const list = await List.findById(listId);
+    const list = await List.findOne({ _id: listId, deleted_at: null });
     if (!list) {
       const err = new Error("List không tồn tại");
       err.statusCode = 404;
@@ -33,14 +38,17 @@ module.exports.create = async (req, res, next) => {
     }
 
     // Tính pos mới: max pos + 65536
-    const lastCard = await Card.findOne({ list: listId }).sort({ pos: -1 });
+    const lastCard = await Card.findOne({
+      list: listId,
+      deleted_at: null,
+    }).sort({ pos: -1 });
     const newPos = lastCard ? lastCard.pos + 65536 : 65536;
 
     const newCard = await Card.create({
       title,
       description,
       list: listId,
-      board: list.board,
+      board: boardId,
       workspace: workspaceId,
       pos: newPos,
       due_date: due_date || null,
@@ -65,8 +73,8 @@ module.exports.updateInfo = async (req, res, next) => {
     const validatedData = cardSchema.parse(req.body);
     const cardId = req.params.cardId;
 
-    const card = await Card.findByIdAndUpdate(
-      cardId,
+    const card = await Card.findOneAndUpdate(
+      { _id: cardId, deleted_at: null },
       { $set: validatedData },
       { new: true, runValidators: true }
     );
@@ -82,20 +90,14 @@ module.exports.updateInfo = async (req, res, next) => {
       data: { card },
     });
   } catch (err) {
+    console.log(err);
     next(err);
   }
 };
 
-module.exports.destroy = async (req, res, next) => {
+module.exports.delete = async (req, res, next) => {
   try {
-    const cardId = req.params.cardId;
-
-    const card = await Card.findByIdAndDelete(cardId);
-    if (!card) {
-      const err = new Error("Không tìm thấy card");
-      err.statusCode = 404;
-      return next(err);
-    }
+    await deleteCard(req.params.cardId, { actor: req.user._id });
 
     res.status(201).json({
       success: true,
@@ -120,7 +122,7 @@ module.exports.moveCard = async (req, res, next) => {
     }
 
     // Lấy card hiện tại
-    const currentCard = await Card.findById(cardId);
+    const currentCard = await Card.findOne({ _id: cardId, deleted_at: null });
     if (!currentCard) {
       return res.status(404).json({
         success: false,
@@ -136,6 +138,7 @@ module.exports.moveCard = async (req, res, next) => {
     const targetList = await List.findOne({
       _id: targetListId,
       board: boardId,
+      deleted_at: null,
     });
 
     if (!targetList) {
@@ -153,6 +156,7 @@ module.exports.moveCard = async (req, res, next) => {
         _id: nextCardId,
         list: targetListId,
         board: boardId,
+        deleted_at: null,
       });
 
       if (!nextCard) {
@@ -171,6 +175,7 @@ module.exports.moveCard = async (req, res, next) => {
         _id: prevCardId,
         list: targetListId,
         board: boardId,
+        deleted_at: null,
       });
 
       if (!prevCard) {
@@ -190,11 +195,13 @@ module.exports.moveCard = async (req, res, next) => {
           _id: prevCardId,
           list: targetListId,
           board: boardId,
+          deleted_at: null,
         }),
         Card.findOne({
           _id: nextCardId,
           list: targetListId,
           board: boardId,
+          deleted_at: null,
         }),
       ]);
 
@@ -229,6 +236,7 @@ module.exports.moveCard = async (req, res, next) => {
       {
         _id: cardId,
         board: boardId,
+        deleted_at: null,
       },
       {
         $set: {
@@ -277,8 +285,8 @@ module.exports.addChecklistItem = async (req, res, next) => {
       completed: false,
     };
 
-    const card = await Card.findByIdAndUpdate(
-      req.params.cardId,
+    const card = await Card.findOneAndUpdate(
+      { _id: req.params.cardId, deleted_at: null },
       { $push: { checklist: newChecklistItem } },
       { new: true, runValidators: true }
     );
@@ -312,6 +320,7 @@ module.exports.toggleChecklistItem = async (req, res, next) => {
     const card = await Card.findOne({
       _id: cardId,
       board: boardId,
+      deleted_at: null,
     });
     if (!card) {
       const err = new Error("Không tìm thấy card.");
@@ -331,6 +340,7 @@ module.exports.toggleChecklistItem = async (req, res, next) => {
       {
         _id: cardId,
         board: boardId,
+        deleted_at: null,
       },
       {
         $set: {
@@ -365,8 +375,8 @@ module.exports.destroyChecklistItem = async (req, res, next) => {
       return next(err);
     }
 
-    const updatedCard = await Card.findByIdAndUpdate(
-      req.params.cardId,
+    const updatedCard = await Card.findOneAndUpdate(
+      { _id: req.params.cardId, deleted_at: null },
       {
         $pull: {
           checklist: { _id: checklistId },

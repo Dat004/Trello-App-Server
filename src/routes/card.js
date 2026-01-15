@@ -43,7 +43,7 @@ router.delete(
   requireBoardAccess,
   requireCardAccess,
   requireCardManage,
-  CardController.destroy
+  CardController.delete
 );
 
 // [PATCH] /api/boards/:boardId/lists/:listId/cards/:cardId
