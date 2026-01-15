@@ -12,7 +12,10 @@ const requireCardAccess = async (req, res, next) => {
       return next(err);
     }
 
-    const card = await Card.findById(cardId);
+    const card = await Card.findOne({
+      _id: cardId,
+      deleted_at: null,
+    });
     if (!card) {
       const err = new Error("Card không tồn tại");
       err.statusCode = 404;
@@ -33,17 +36,19 @@ const requireCardManage = async (req, res, next) => {
     const board = req.board;
     const card = req.card;
 
-    if (card.board.toString() !== board._id) {
-      const err = new Error("Không tìm thất board.");
+    if (!card.board.equals(board._id)) {
+      const err = new Error("Không tìm thấy board.");
       err.statusCode = 404;
       return next(err);
     }
 
-    const isBoardOwner = board.owner.toString() === req.user._id.toString();
+    const userId = req.user._id;
+
+    const isBoardOwner = board.owner.equals(userId);
     const isBoardAdmin = board.members.some(
-      (m) => m.user.toString() === req.user._id.toString() && m.role === "admin"
+      (m) => m.user.equals(userId) && m.role === "admin"
     );
-    const isCreator = card.creator.toString() === req.user._id.toString();
+    const isCreator = card.creator.equals(userId);
 
     if (!isBoardOwner && !isBoardAdmin && !isCreator) {
       const err = new Error(
@@ -76,10 +81,18 @@ const requireContentManager = async (req, res, next) => {
     let authorField;
 
     if (commentId) {
-      item = await Comment.findOne({ _id: commentId, card: card._id });
+      item = await Comment.findOne({
+        _id: commentId,
+        card: card._id,
+        deleted_at: null,
+      });
       authorField = "author";
     } else if (attachmentId) {
-      item = await Attachment.findOne({ _id: attachmentId, card: card._id });
+      item = await Attachment.findOne({
+        _id: attachmentId,
+        card: card._id,
+        deleted_at: null,
+      });
       authorField = "uploaded_by";
     }
 
@@ -95,7 +108,7 @@ const requireContentManager = async (req, res, next) => {
     const isBoardAdmin = board.members.some(
       (m) => m.user.equals(userId) && m.role === "admin"
     );
-    const isAuthor = item[authorField].equals(userId);
+    const isAuthor = item[authorField] && item[authorField].equals(userId);
 
     if (!isBoardOwner && !isBoardAdmin && !isAuthor) {
       const err = new Error("Bạn không có quyền quản lý nội dung này");
