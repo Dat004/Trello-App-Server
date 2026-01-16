@@ -21,6 +21,29 @@ module.exports.getCardsByList = async (req, res, next) => {
   }
 };
 
+module.exports.getCardById = async (req, res, next) => {
+  try {
+    const card = await Card.findOne({
+      _id: req.params.cardId,
+      deleted_at: null,
+    })
+
+    if (!card) {
+      const err = new Error("Card không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy card thành công",
+      data: { card },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports.create = async (req, res, next) => {
   try {
     const { title, description, due_date, priority, labels } = cardSchema.parse(
@@ -296,10 +319,13 @@ module.exports.addChecklistItem = async (req, res, next) => {
       return next(err);
     }
 
+    // Lấy checklist item vừa được thêm (item cuối cùng trong mảng)
+    const addedChecklistItem = card.checklist[card.checklist.length - 1];
+
     res.status(200).json({
       success: true,
       message: "Thêm checklist mới thành công",
-      data: { card },
+      data: { checklist: addedChecklistItem },
     });
   } catch (err) {
     next(err);
@@ -354,11 +380,14 @@ module.exports.toggleChecklistItem = async (req, res, next) => {
       }
     );
 
+    // Lấy checklist item đã được cập nhật
+    const updatedChecklistItem = updatedCard.checklist.id(checklistId);
+
     res.status(200).json({
       success: true,
       message: "Cập nhật trạng thái checklist thành công",
       data: {
-        card: updatedCard,
+        checklist: updatedChecklistItem,
       },
     });
   } catch (err) {
@@ -395,7 +424,6 @@ module.exports.destroyChecklistItem = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Xóa checklist item thành công",
-      data: { card: updatedCard },
     });
   } catch (err) {
     next(err);
