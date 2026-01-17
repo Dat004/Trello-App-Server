@@ -30,10 +30,23 @@ const CommentSchema = new Schema({
     ref: "User",
     required: true,
   },
-  reply_to: {
+  thread_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Comment",
     default: null,
+    index: true,
+  },
+  parent_comment: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Comment",
+    default: null,
+    index: true,
+  },
+  depth: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 3, // Giới hạn độ sâu tối đa 3 levels
   },
   mentions: [
     {
@@ -62,9 +75,8 @@ const CommentSchema = new Schema({
 });
 
 // Auto update updated_at
-CommentSchema.pre("save", function (next) {
+CommentSchema.pre("save", function () {
   this.updated_at = Date.now();
-  next();
 });
 
 // Indexing
@@ -73,5 +85,7 @@ CommentSchema.index({ card: 1, created_at: -1, deleted_at: 1 });
 CommentSchema.index({ board: 1, deleted_at: 1 });
 CommentSchema.index({ workspace: 1, deleted_at: 1 });
 CommentSchema.index({ mentions: 1, deleted_at: 1 });
+CommentSchema.index({ thread_id: 1, created_at: 1, deleted_at: 1 }); // Tối ưu query threads
+CommentSchema.index({ parent_comment: 1, deleted_at: 1 }); // Tối ưu query replies trực tiếp
 
 module.exports = mongoose.model("Comment", CommentSchema);
