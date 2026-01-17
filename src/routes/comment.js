@@ -12,6 +12,9 @@ router.delete('/:commentId', protect, requireBoardAccess, requireCardAccess, req
 // [POST] /api/boards/:boardId/cards/:cardId/comments/create
 router.post('/create', protect, requireBoardAccess, requireCardAccess, CommentController.addComment);
 
+// [GET] /api/boards/:boardId/cards/:cardId/comments/:commentId/thread
+router.get('/:commentId/thread', protect, requireBoardAccess, requireCardAccess, CommentController.getThread);
+
 // [GET] /api/boards/:boardId/cards/:cardId/comments
 router.get('/', protect, requireBoardAccess, requireCardAccess, CommentController.getCommentsByCard);
 
