@@ -83,11 +83,12 @@ module.exports.getCommentsByCard = async (req, res, next) => {
     const commentsWithReplyCounts = await Promise.all(
       comments.map(async (comment) => {
         const replyCount = await Comment.countDocuments({
-          thread_id: comment._id,
+          parent_comment: comment._id,
           deleted_at: null,
         });
 
         return {
+          ...comment,
           reply_count: replyCount,
         };
       })
@@ -117,32 +118,80 @@ module.exports.getCommentsByCard = async (req, res, next) => {
 
 module.exports.getThread = async (req, res, next) => {
   try {
-    const rootCommentId = req.params.commentId;
+    const parentCommentId = req.params.commentId;
 
-    // Kiểm tra root comment có tồn tại không
-    const rootComment = await Comment.findById(rootCommentId);
-    if (!rootComment) {
+    const parentComment = await Comment.findById(parentCommentId);
+    if (!parentComment) {
       return res.status(404).json({
         success: false,
         message: "Comment không tồn tại",
       });
     }
 
-    // Lấy tất cả comments trong thread (root + tất cả replies)
-    const comments = await Comment.find({
-      $or: [
-        { _id: rootCommentId },
-        { thread_id: rootCommentId }
-      ],
-      deleted_at: null,
-    })
-      .sort({ created_at: 1 })
-      .populate("author", "full_name avatar")
-      .populate("mentions", "full_name avatar");
+    let comments = [];
+
+    // Nếu parent ở depth >= 2 (tức là con sẽ là depth 3 - max), 
+    // thì lấy hết
+    if (parentComment.depth >= 2) {
+      let currentParentIds = [parentComment._id];
+      let iteration = 0;
+      const MAX_ITERATIONS = 10; // Safety break
+
+      while (currentParentIds.length > 0 && iteration < MAX_ITERATIONS) {
+        // Tìm direct replies của tầng này
+        const found = await Comment.find({
+          parent_comment: { $in: currentParentIds },
+          deleted_at: null,
+        })
+          .sort({ created_at: 1 })
+          .populate("author", "full_name avatar")
+          .populate("mentions", "full_name avatar")
+          .lean();
+
+        if (found.length === 0) break;
+
+        // Return reply_count = 0 cho tất cả comment depth 3 vì đã load hết
+        const foundWithZeroCount = found.map(c => ({ ...c, reply_count: 0 }));
+        comments.push(...foundWithZeroCount);
+
+        // Lấy con của đám vừa tìm được
+        currentParentIds = found.map((c) => c._id);
+        iteration++;
+      }
+
+      // Sort lại toàn bộ theo thời gian để hiển thị đúng thứ tự
+      comments.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    } else {
+      // Chỉ lấy direct children (Lazy load)
+      comments = await Comment.find({
+        parent_comment: parentCommentId,
+        deleted_at: null,
+      })
+        .sort({ created_at: 1 })
+        .populate("author", "full_name avatar")
+        .populate("mentions", "full_name avatar")
+        .lean();
+
+      // Tính số lượng replies thật
+      comments = await Promise.all(
+        comments.map(async (comment) => {
+          const replyCount = await Comment.countDocuments({
+            parent_comment: comment._id,
+            deleted_at: null,
+          });
+
+          return {
+            ...comment,
+            reply_count: replyCount,
+          };
+        })
+      );
+    }
 
     res.status(200).json({
       success: true,
-      message: "Lấy thread thành công",
+      message: "Lấy replies thành công",
       data: { comments },
     });
   } catch (error) {
@@ -153,12 +202,43 @@ module.exports.getThread = async (req, res, next) => {
 
 module.exports.destroyComment = async (req, res, next) => {
   try {
-    await Comment.findByIdAndDelete(req.params.commentId);
+    const commentId = req.params.commentId;
+
+    const comment = await Comment.findOne({
+      _id: commentId,
+      deleted_at: null,
+    });
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment không tồn tại",
+      });
+    }
+
+    // Cascade Delete: Tìm và xóa tất cả descendants
+    let idsToDelete = [comment._id];
+    let currentParentIds = [comment._id];
+
+    // Tìm tất cả con cháu bằng cách duyệt theo parent_comment
+    while (currentParentIds.length > 0) {
+      const children = await Comment.find({
+        parent_comment: { $in: currentParentIds },
+        deleted_at: null,
+      }).select("_id");
+
+      if (children.length === 0) break;
+
+      const childIds = children.map((c) => c._id);
+      idsToDelete.push(...childIds);
+      currentParentIds = childIds;
+    }
+
+    // Xóa tất cả comments (bao gồm comment gốc và descendants)
+    await Comment.deleteMany({ _id: { $in: idsToDelete } });
 
     res.status(200).json({
       success: true,
-      message: "Xóa comment thành công",
-      data: null,
+      message: `Đã xóa ${idsToDelete.length} comment(s)`,
     });
   } catch (error) {
     next(error);
