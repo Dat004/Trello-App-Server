@@ -128,12 +128,9 @@ module.exports.getThread = async (req, res, next) => {
       });
     }
 
-    // Lấy tất cả comments trong thread (root + tất cả replies)
+    // Lấy tẩt cả replies từ root comment qua thread_id
     const comments = await Comment.find({
-      $or: [
-        { _id: rootCommentId },
-        { thread_id: rootCommentId }
-      ],
+      thread_id: rootCommentId,
       deleted_at: null,
     })
       .sort({ created_at: 1 })
