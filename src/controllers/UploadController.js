@@ -1,7 +1,6 @@
-// modules/upload/upload.controller.js
-const uploadService = require('./upload.service');
+const uploadService = require('../services/upload.js');
 
-exports.getUploadSignature = async (req, res, next) => {
+module.exports.getUploadSignature = async (req, res, next) => {
   try {
     const { intent, contextId } = req.body;
 

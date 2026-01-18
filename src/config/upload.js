@@ -1,11 +1,10 @@
-// modules/upload/upload.config.js
 module.exports.UPLOAD_INTENTS = {
   avatar: {
     folder: (userId) => `users/${userId}/avatar`,
     resource_type: "image",
     allowedFormats: ["jpg", "jpeg", "png", "webp"],
     maxSizeMB: 2,
-    transformation: [{ width: 300, height: 300, crop: "fill" }],
+    transformation: "c_fill,w_300,h_300",
   },
 
   card_comments: {
