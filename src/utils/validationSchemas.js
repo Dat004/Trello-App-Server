@@ -115,7 +115,7 @@ const boardSchema = z.object({
   description: z.string().optional().or(z.literal("")),
   color: z.string().trim(),
   visibility: z.enum(["private", "workspace", "public"]).default("workspace"),
-  workspaceId: objectJd,
+  workspaceId: objectJd.optional(),
 });
 
 const updateBoardsSchema = z.object({
@@ -126,7 +126,6 @@ const updateBoardsSchema = z.object({
     .trim(),
   description: z.string().optional().or(z.literal("")),
   color: z.string().trim(),
-  is_starred: z.boolean(),
   visibility: z.enum(["private", "workspace", "public"]).default("workspace"),
 });
 
@@ -146,7 +145,7 @@ const cardSchema = z.object({
     .min(1, "Tiêu đề không được rỗng")
     .max(200, "Tiêu đề không quá 200 ký tự"),
   description: z.string().trim().optional(),
-  due_date: z.coerce.date().nullable().optional(),
+  due_date: z.coerce.date().optional().nullable(),
   priority: z.enum(["low", "medium", "high"]).optional(),
   labels: z
     .array(
