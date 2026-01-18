@@ -30,6 +30,10 @@ const AttachmentSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  public_id: {
+    type: String,
+    default: null,
+  },
   type: {
     type: String,
     default: "file",
