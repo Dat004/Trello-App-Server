@@ -101,9 +101,8 @@ const CardSchema = new mongoose.Schema({
 });
 
 // Auto update updated_at
-CardSchema.pre("findOneAndUpdate", function (next) {
+CardSchema.pre("findOneAndUpdate", function () {
   this.set({ updated_at: Date.now() });
-  next();
 });
 
 // Indexing
