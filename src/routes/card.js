@@ -65,6 +65,9 @@ router.patch(
   CardController.moveCard
 );
 
+// [GET] /api/boards/:boardId/lists/:listId/cards/:cardId
+router.get(":cardId", protect, requireBoardAccess, CardController.getCardById);
+
 // [POST] /api/boards/:boardId/lists/:listId/cards/create
 router.post("/create", protect, requireBoardAccess, CardController.create);
 
