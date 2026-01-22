@@ -38,6 +38,11 @@ const AttachmentSchema = new mongoose.Schema({
     type: String,
     default: "file",
   },
+  resource_type: {
+    type: String,
+    enum: ["image", "video", "raw", "auto"],
+    default: "auto",
+  },
   size: {
     type: Number,
     min: [0, "Size phải lớn hơn hoặc bằng 0"],

@@ -80,7 +80,7 @@ module.exports.destroyAttachment = async (req, res, next) => {
     // Xóa file trên Cloudinary nếu có public_id
     if (attachment.public_id) {
       await cloudinary.uploader.destroy(attachment.public_id, {
-        resource_type: "auto",
+        resource_type: attachment.resource_type || "auto",
       });
     }
 
