@@ -153,9 +153,17 @@ module.exports.moveCard = async (req, res, next) => {
       });
     }
 
-    const boardId = currentCard.board.toString();
+    const boardId = req.params.boardId;
     const sourceListId = currentCard.list.toString();
     const targetListId = destinationListId || sourceListId;
+
+    // Check: Card phải thuộc về board hiện tại
+    if (currentCard.board.toString() !== boardId) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền di chuyển card này hoặc card không thuộc board này",
+      });
+    }
 
     // Validate list đích cùng board
     const targetList = await List.findOne({
@@ -171,88 +179,78 @@ module.exports.moveCard = async (req, res, next) => {
       });
     }
 
-    let newPos;
-
-    // Case 1: kéo lên đầu (no prev, có next)
-    if (!prevCardId && nextCardId) {
-      const nextCard = await Card.findOne({
-        _id: nextCardId,
-        list: targetListId,
-        board: boardId,
-        deleted_at: null,
-      });
-
-      if (!nextCard) {
-        return res.status(400).json({
-          success: false,
-          message: "nextCardId không hợp lệ",
-        });
-      }
-
-      newPos = nextCard.pos / 2;
-    }
-
-    // Case 2: kéo xuống cuối (có prev, no next)
-    else if (prevCardId && !nextCardId) {
-      const prevCard = await Card.findOne({
-        _id: prevCardId,
-        list: targetListId,
-        board: boardId,
-        deleted_at: null,
-      });
-
-      if (!prevCard) {
-        return res.status(400).json({
-          success: false,
-          message: "prevCardId không hợp lệ",
-        });
-      }
-
-      newPos = prevCard.pos + 65536;
-    }
-
-    // Case 3: kéo vào giữa (có cả prev và next)
-    else if (prevCardId && nextCardId) {
-      const [prevCard, nextCard] = await Promise.all([
-        Card.findOne({
+    // 3. Lấy thông tin các card lân cận (nếu có)
+    const [prevCard, nextCard] = await Promise.all([
+      prevCardId
+        ? Card.findOne({
           _id: prevCardId,
           list: targetListId,
           board: boardId,
           deleted_at: null,
-        }),
-        Card.findOne({
+        })
+        : null,
+      nextCardId
+        ? Card.findOne({
           _id: nextCardId,
           list: targetListId,
           board: boardId,
           deleted_at: null,
-        }),
-      ]);
+        })
+        : null,
+    ]);
 
-      if (!prevCard || !nextCard) {
-        return res.status(400).json({
-          success: false,
-          message: "prevCardId hoặc nextCardId không hợp lệ",
+    // Kiểm tra tính hợp lệ của card lân cận
+    if (prevCardId && !prevCard) {
+      return res.status(400).json({
+        success: false,
+        message: "prevCardId không tồn tại hoặc không thuộc list đích",
+      });
+    }
+    if (nextCardId && !nextCard) {
+      return res.status(400).json({
+        success: false,
+        message: "nextCardId không tồn tại hoặc không thuộc list đích",
+      });
+    }
+
+    let newPos;
+
+    // Case 1: Không có cả prev và next (List trống hoặc FE không gửi vị trí cụ thể)
+    if (!prevCard && !nextCard) {
+      if (targetListId !== sourceListId) {
+        // Tìm card có pos cao nhất trong list đích để cộng thêm
+        // Điều này giúp card luôn nằm ở cuối ngay cả khi list không thực sự trống
+        const lastCard = await Card.findOne({
+          list: targetListId,
+          deleted_at: null,
+        }).sort({ pos: -1 });
+        newPos = lastCard ? lastCard.pos + 65536 : 65536;
+      } else {
+        return res.status(200).json({
+          success: true,
+          message: "Vị trí không thay đổi",
+          data: { card: currentCard },
         });
       }
-
-      // Conflict detection (stale drag)
+    }
+    // Case 2: Di chuyển lên đầu (chỉ có next)
+    else if (!prevCard && nextCard) {
+      newPos = nextCard.pos / 2;
+    }
+    // Case 3: Di chuyển xuống cuối (chỉ có prev)
+    else if (prevCard && !nextCard) {
+      newPos = prevCard.pos + 65536;
+    }
+    // Case 4: Di chuyển vào giữa
+    else {
+      // Bảo vệ chống dữ liệu cũ (Conflict detection)
       if (prevCard.pos >= nextCard.pos) {
         return res.status(409).json({
           success: false,
-          message: "Thứ tự card không hợp lệ (dữ liệu đã thay đổi)",
+          message: "Xung đột vị trí: Dữ liệu trên giao diện có thể đã cũ",
         });
       }
-
       newPos = (prevCard.pos + nextCard.pos) / 2;
-    }
-
-    // Case 4: không thay đổi vị trí
-    else {
-      return res.status(200).json({
-        success: true,
-        message: "Vị trí không thay đổi",
-        data: { card: currentCard },
-      });
     }
 
     const updatedCard = await Card.findOneAndUpdate(
