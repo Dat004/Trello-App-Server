@@ -161,6 +161,8 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const attachmentInputSchema = z.object({
   name: z.string().trim(),
   url: z.string().trim().url("URL không hợp lệ"),
+  public_id: z.string().trim().min(1, "public_id là bắt buộc"),
+  resource_type: z.enum(["image", "video", "raw", "auto"]).default("auto"),
   type: z.string().default("file"),
   size: z.coerce
     .number()
