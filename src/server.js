@@ -1,12 +1,21 @@
-const app = require('./app');
-const router = require('./routes');
-const connectDB = require('./config/db');
+const http = require('http');
+
 const errorHandler = require('./middlewares/errorMiddleware');
+const { app, corsOptions } = require('./app');
+const connectDB = require('./config/db');
+const socketIO = require('./socket');
+const router = require('./routes');
 
 // Kết nối DB trước khi khởi động server
 connectDB();
 
 const PORT = process.env.PORT || 5000;
+
+// Tạo HTTP Server
+const server = http.createServer(app);
+
+// Khởi tạo Socket.io
+socketIO.init(server, corsOptions);
 
 // Router init
 router(app);
@@ -15,6 +24,6 @@ router(app);
 app.use(errorHandler);
 
 // Khởi động server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
