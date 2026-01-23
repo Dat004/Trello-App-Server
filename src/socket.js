@@ -23,6 +23,18 @@ module.exports = {
                 console.log(`Socket ${socket.id} left card room: card:${cardId}`);
             });
 
+            // Join room for specific board
+            socket.on("join-board", (boardId) => {
+                socket.join(`board:${boardId}`);
+                console.log(`Socket ${socket.id} joined board room: board:${boardId}`);
+            });
+
+            // Leave board room
+            socket.on("leave-board", (boardId) => {
+                socket.leave(`board:${boardId}`);
+                console.log(`Socket ${socket.id} left board room: board:${boardId}`);
+            });
+
             socket.on("disconnect", () => {
                 console.log("Client disconnected:", socket.id);
             });
