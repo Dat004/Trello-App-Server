@@ -1,4 +1,5 @@
 const Comment = require("../models/Comment.model");
+const { getIO } = require("../socket");
 
 module.exports.addComment = async (req, res, next) => {
   try {
@@ -51,6 +52,23 @@ module.exports.addComment = async (req, res, next) => {
     });
 
     await newComment.populate("author", "full_name avatar");
+
+    // Socket.io emit
+    const io = getIO();
+    const socketId = req.headers["x-socket-id"];
+    const room = `card:${card._id}`;
+
+    if (socketId) {
+      const senderSocket = io.sockets.sockets.get(socketId);
+      // Loại trừ người gửi nếu có socketId
+      if (senderSocket) {
+        senderSocket.to(room).emit("comment-added", newComment);
+      } else {
+        io.to(room).emit("comment-added", newComment);
+      }
+    } else {
+      io.to(room).emit("comment-added", newComment);
+    }
 
     res.status(201).json({
       success: true,
@@ -146,13 +164,30 @@ module.exports.getThread = async (req, res, next) => {
           .sort({ created_at: 1 })
           .populate("author", "full_name avatar")
           .populate("mentions", "full_name avatar")
+          .populate({
+            path: "parent_comment",
+            select: "author",
+            populate: {
+              path: "author",
+              select: "full_name avatar",
+            },
+          })
           .lean();
 
         if (found.length === 0) break;
 
-        // Return reply_count = 0 cho tất cả comment depth 3 vì đã load hết
-        const foundWithZeroCount = found.map(c => ({ ...c, reply_count: 0 }));
-        comments.push(...foundWithZeroCount);
+        // Tách thông tin người được reply ra field riêng
+        const foundWithRepliedTo = found.map(c => {
+          const reply_to = c.parent_comment?.author || null;
+          const { parent_comment, ...rest } = c;
+          return {
+            ...rest,
+            parent_comment: parent_comment?._id || null,
+            reply_to,
+            reply_count: 0
+          };
+        });
+        comments.push(...foundWithRepliedTo);
 
         // Lấy con của đám vừa tìm được
         currentParentIds = found.map((c) => c._id);
@@ -171,9 +206,17 @@ module.exports.getThread = async (req, res, next) => {
         .sort({ created_at: 1 })
         .populate("author", "full_name avatar")
         .populate("mentions", "full_name avatar")
+        .populate({
+          path: "parent_comment",
+          select: "author",
+          populate: {
+            path: "author",
+            select: "full_name avatar",
+          },
+        })
         .lean();
 
-      // Tính số lượng replies thật
+      // Tính số lượng replies và tách thông tin người được reply
       comments = await Promise.all(
         comments.map(async (comment) => {
           const replyCount = await Comment.countDocuments({
@@ -181,8 +224,13 @@ module.exports.getThread = async (req, res, next) => {
             deleted_at: null,
           });
 
+          const reply_to = comment.parent_comment?.author || null;
+          const { parent_comment, ...rest } = comment;
+
           return {
-            ...comment,
+            ...rest,
+            parent_comment: parent_comment?._id || null,
+            reply_to,
             reply_count: replyCount,
           };
         })
@@ -235,6 +283,27 @@ module.exports.destroyComment = async (req, res, next) => {
 
     // Xóa tất cả comments (bao gồm comment gốc và descendants)
     await Comment.deleteMany({ _id: { $in: idsToDelete } });
+
+    // Socket.io emit
+    const io = getIO();
+    const socketId = req.headers["x-socket-id"];
+    const room = `card:${comment.card}`;
+    const eventData = {
+      commentId: comment._id,
+      deletedCount: idsToDelete.length,
+    };
+
+    if (socketId) {
+      const senderSocket = io.sockets.sockets.get(socketId);
+      // Loại trừ người gửi nếu có socketId
+      if (senderSocket) {
+        senderSocket.to(room).emit("comment-deleted", eventData);
+      } else {
+        io.to(room).emit("comment-deleted", eventData);
+      }
+    } else {
+      io.to(room).emit("comment-deleted", eventData);
+    }
 
     res.status(200).json({
       success: true,
