@@ -1,6 +1,7 @@
 const { listSchema } = require("../utils/validationSchemas");
 const { deleteList } = require("../services/list/delete");
 const List = require("../models/List.model");
+const { emitToRoom } = require("../utils/socketHelper");
 
 // Tạo list mới
 module.exports.create = async (req, res, next) => {
@@ -205,6 +206,14 @@ module.exports.updateListPosition = async (req, res, next) => {
         message: "Không thể cập nhật list",
       });
     }
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "list-moved",
+      data: { listId: updatedList._id, pos: updatedList.pos },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,

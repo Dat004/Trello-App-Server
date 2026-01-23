@@ -1,5 +1,5 @@
 const Comment = require("../models/Comment.model");
-const { getIO } = require("../socket");
+const { emitToRoom } = require("../utils/socketHelper");
 
 module.exports.addComment = async (req, res, next) => {
   try {
@@ -53,22 +53,13 @@ module.exports.addComment = async (req, res, next) => {
 
     await newComment.populate("author", "full_name avatar");
 
-    // Socket.io emit
-    const io = getIO();
-    const socketId = req.headers["x-socket-id"];
-    const room = `card:${card._id}`;
-
-    if (socketId) {
-      const senderSocket = io.sockets.sockets.get(socketId);
-      // Loại trừ người gửi nếu có socketId
-      if (senderSocket) {
-        senderSocket.to(room).emit("comment-added", newComment);
-      } else {
-        io.to(room).emit("comment-added", newComment);
-      }
-    } else {
-      io.to(room).emit("comment-added", newComment);
-    }
+    // Socket.io emit (Cách 2: Loại trừ người gửi nếu có socketId)
+    emitToRoom({
+      room: `card:${card._id}`,
+      event: "comment-added",
+      data: newComment,
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(201).json({
       success: true,
@@ -284,26 +275,13 @@ module.exports.destroyComment = async (req, res, next) => {
     // Xóa tất cả comments (bao gồm comment gốc và descendants)
     await Comment.deleteMany({ _id: { $in: idsToDelete } });
 
-    // Socket.io emit
-    const io = getIO();
-    const socketId = req.headers["x-socket-id"];
-    const room = `card:${comment.card}`;
-    const eventData = {
-      commentId: comment._id,
-      deletedCount: idsToDelete.length,
-    };
-
-    if (socketId) {
-      const senderSocket = io.sockets.sockets.get(socketId);
-      // Loại trừ người gửi nếu có socketId
-      if (senderSocket) {
-        senderSocket.to(room).emit("comment-deleted", eventData);
-      } else {
-        io.to(room).emit("comment-deleted", eventData);
-      }
-    } else {
-      io.to(room).emit("comment-deleted", eventData);
-    }
+    // Socket.io emit (Cách 2: Loại trừ người gửi nếu có socketId)
+    emitToRoom({
+      room: `card:${comment.card}`,
+      event: "comment-deleted",
+      data: { commentId: comment._id, deletedCount: idsToDelete.length },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,
