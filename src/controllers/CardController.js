@@ -1,6 +1,7 @@
 const { deleteCard } = require("../services/card/delete");
 const Card = require("../models/Card.model");
 const List = require("../models/List.model");
+const { emitToRoom } = require("../utils/socketHelper");
 
 const { cardSchema } = require("../utils/validationSchemas");
 
@@ -106,6 +107,14 @@ module.exports.updateInfo = async (req, res, next) => {
       err.statusCode = 404;
       return next(err);
     }
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${card.board}`,
+      event: "card-updated",
+      data: { cardId: card._id, updates: validatedData },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(201).json({
       success: true,
@@ -278,6 +287,20 @@ module.exports.moveCard = async (req, res, next) => {
       });
     }
 
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "card-moved",
+      data: {
+        cardId: updatedCard._id,
+        listId: updatedCard.list,
+        pos: updatedCard.pos,
+        sourceListId,
+        targetListId,
+      },
+      socketId: req.headers["x-socket-id"],
+    });
+
     res.status(200).json({
       success: true,
       message: "Di chuyển card thành công",
@@ -319,6 +342,14 @@ module.exports.addChecklistItem = async (req, res, next) => {
 
     // Lấy checklist item vừa được thêm (item cuối cùng trong mảng)
     const addedChecklistItem = card.checklist[card.checklist.length - 1];
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${card.board}`,
+      event: "checklist-item-added",
+      data: { cardId: card._id, checklist: addedChecklistItem },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,
@@ -381,6 +412,14 @@ module.exports.toggleChecklistItem = async (req, res, next) => {
     // Lấy checklist item đã được cập nhật
     const updatedChecklistItem = updatedCard.checklist.id(checklistId);
 
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${updatedCard.board}`,
+      event: "checklist-item-toggled",
+      data: { cardId: updatedCard._id, checklist: updatedChecklistItem },
+      socketId: req.headers["x-socket-id"],
+    });
+
     res.status(200).json({
       success: true,
       message: "Cập nhật trạng thái checklist thành công",
@@ -418,6 +457,14 @@ module.exports.destroyChecklistItem = async (req, res, next) => {
         message: "Card không tồn tại",
       });
     }
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${updatedCard.board}`,
+      event: "checklist-item-deleted",
+      data: { cardId: updatedCard._id, checklistId },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,
