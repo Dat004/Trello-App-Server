@@ -25,6 +25,14 @@ module.exports.create = async (req, res, next) => {
       workspace: workspaceId,
     });
 
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "list-created",
+      data: { list: newList },
+      socketId: req.headers["x-socket-id"],
+    });
+
     res.status(201).json({
       success: true,
       message: "Tạo list thành công",
@@ -76,6 +84,14 @@ module.exports.updateList = async (req, res, next) => {
       return next(err);
     }
 
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${req.params.boardId}`,
+      event: "list-updated",
+      data: { listId: updatedList._id, list: updatedList },
+      socketId: req.headers["x-socket-id"],
+    });
+
     res.status(200).json({
       success: true,
       message: "Cập nhật list thành công",
@@ -89,7 +105,16 @@ module.exports.updateList = async (req, res, next) => {
 // Xóa list
 module.exports.deleteList = async (req, res, next) => {
   try {
-    await deleteList(req.params.listId, { actor: req.user._id });
+    const { listId, boardId } = req.params;
+    await deleteList(listId, { actor: req.user._id });
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "list-deleted",
+      data: { listId },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,

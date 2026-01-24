@@ -81,6 +81,14 @@ module.exports.create = async (req, res, next) => {
       creator: req.user._id,
     });
 
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "card-created",
+      data: { card: newCard },
+      socketId: req.headers["x-socket-id"],
+    });
+
     res.status(201).json({
       success: true,
       message: "Tạo card thành công",
@@ -129,7 +137,16 @@ module.exports.updateInfo = async (req, res, next) => {
 
 module.exports.delete = async (req, res, next) => {
   try {
-    await deleteCard(req.params.cardId, { actor: req.user._id });
+    const { cardId, boardId } = req.params;
+    await deleteCard(cardId, { actor: req.user._id });
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "card-deleted",
+      data: { cardId },
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(201).json({
       success: true,
