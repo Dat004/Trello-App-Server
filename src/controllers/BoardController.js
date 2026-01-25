@@ -78,6 +78,37 @@ module.exports.getMyBoards = async (req, res, next) => {
   }
 };
 
+// Lấy tất cả boards trong một workspace cụ thể
+module.exports.getBoardsByWorkspace = async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+
+    // Validate workspaceId
+    if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+      const error = new Error("Workspace ID không hợp lệ");
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    // Lấy tất cả boards thuộc workspace này
+    const boards = await Board.find({
+      workspace: workspaceId,
+      deleted_at: null,
+    })
+      .populate("owner", "email full_name avatar.url")
+      .populate("members.user", "email full_name avatar.url")
+      .sort({ updated_at: -1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy danh sách board trong workspace thành công",
+      data: { boards },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Chi tiết board
 module.exports.getBoardById = async (req, res, next) => {
   try {
