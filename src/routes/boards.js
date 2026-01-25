@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
+const { requireWorkspaceMember } = require("../middlewares/workspaceMiddleware");
 const BoardController = require("../controllers/BoardController");
 const protect = require("../middlewares/authMiddleware");
 const {
@@ -29,6 +30,9 @@ router.patch("/:boardId", protect, requireBoardAccess, requireBoardAdmin, BoardC
 
 // [POST] /api/boards/create
 router.post("/create", protect, BoardController.create);
+
+// [GET] /api/boards/workspace/:workspaceId
+router.get("/workspace/:workspaceId", protect, requireWorkspaceMember, BoardController.getBoardsByWorkspace);
 
 // [GET] /api/boards/:boardId
 router.get("/:boardId", protect, requireBoardAccess, BoardController.getBoardById);
