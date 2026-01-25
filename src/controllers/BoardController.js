@@ -18,6 +18,7 @@ module.exports.create = async (req, res, next) => {
       color: color || "bg-blue-500",
       visibility: visibility || (workspaceId ? "workspace" : "private"),
       owner: req.user._id,
+      members: [{ user: req.user._id, role: "admin" }],
     };
 
     if (workspaceId) {
