@@ -81,13 +81,13 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
     ]);
 
     // Join với User để lấy thông tin thành viên
-    await Workspace.populate(workspaces, 
+    await Workspace.populate(workspaces,
       {
         path: "members.user",
         select: "_id full_name avatar.url email",
       }
     );
-    await Workspace.populate(workspaces, 
+    await Workspace.populate(workspaces,
       {
         path: "join_requests.user",
         select: "_id full_name avatar.url email",
@@ -520,7 +520,7 @@ exports.handleJoinRequest = async (req, res, next) => {
       if (workspace.members.length >= workspace.max_members) {
         return res.status(400).json({ success: false, message: "Workspace đã đạt giới hạn thành viên" });
       }
-      
+
       // Thêm vào mảng members
       newMember = {
         user: targetUserId,
@@ -563,6 +563,103 @@ exports.handleJoinRequest = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Đã từ chối yêu cầu tham gia",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Thêm hàng loạt boards vào workspace
+exports.addBoardsToWorkspace = async (req, res, next) => {
+  try {
+    const { boardIds } = req.body;
+    const { workspaceId } = req.params;
+    const userId = req.user._id;
+
+    if (!Array.isArray(boardIds) || boardIds.length === 0) {
+      return res.status(400).json({ success: false, message: "Danh sách boardIds không hợp lệ" });
+    }
+
+    // 1. Kiểm tra quyền Admin/Owner trên các board này TRƯỚC khi cập nhật
+    const boards = await Board.find({
+      _id: { $in: boardIds },
+      deleted_at: null
+    });
+
+    if (boards.length !== boardIds.length) {
+      return res.status(404).json({ success: false, message: "Một số board không tồn tại hoặc đã bị xóa" });
+    }
+
+    // Kiểm tra xem user có phải là owner hoặc admin của TẤT CẢ các board này không
+    const hasPermissionAll = boards.every(board => {
+      const isOwner = board.owner.equals(userId);
+      const isAdmin = board.members.some(m => m.user.equals(userId) && m.role === "admin");
+      return isOwner || isAdmin;
+    });
+
+    if (!hasPermissionAll) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền quản trị trên một hoặc nhiều board đã chọn"
+      });
+    }
+
+    // 2. Cập nhật workspace và chuyển visibility sang 'workspace'
+    const result = await Board.updateMany(
+      { _id: { $in: boardIds } },
+      {
+        $set: {
+          workspace: workspaceId,
+          visibility: "workspace"
+        }
+      }
+    );
+
+    if (!result.modifiedCount) {
+      return res.status(400).json({ success: false, message: "Không tìm thấy board nào trong workspace này" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Đã thêm ${boardIds.length} board vào workspace thành công`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Loại bỏ hàng loạt boards khỏi workspace
+exports.removeBoardsFromWorkspace = async (req, res, next) => {
+  try {
+    const { boardIds } = req.body;
+    const { workspaceId } = req.params;
+
+    if (!Array.isArray(boardIds) || boardIds.length === 0) {
+      return res.status(400).json({ success: false, message: "Danh sách boardIds không hợp lệ" });
+    }
+
+    // Workspace Owner/Admin có quyền tối cao, có thể loại bỏ bất kỳ board nào trong workspace
+    const result = await Board.updateMany(
+      {
+        _id: { $in: boardIds },
+        workspace: workspaceId,
+        deleted_at: null
+      },
+      {
+        $set: {
+          workspace: null,
+          visibility: "private"
+        }
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy board nào trong workspace này" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Đã loại bỏ ${result.modifiedCount} board khỏi workspace thành công`,
     });
   } catch (error) {
     next(error);

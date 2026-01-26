@@ -36,6 +36,12 @@ router.delete('/:workspaceId', protect, requireWorkspaceAdmin, WorkspaceControll
 // [PATCH] /api/workspaces/:workspaceId
 router.patch('/:workspaceId', protect, requireWorkspaceAdmin, WorkspaceController.updateWorkspace);
 
+// [POST] /api/workspaces/:workspaceId/boards
+router.post("/:workspaceId/boards", protect, requireWorkspaceAdmin, WorkspaceController.addBoardsToWorkspace);
+
+// [DELETE] /api/workspaces/:workspaceId/boards
+router.delete("/:workspaceId/boards", protect, requireWorkspaceAdmin, WorkspaceController.removeBoardsFromWorkspace);
+
 // [POST] /api/workspaces/create
 router.post("/create", protect, WorkspaceController.create);
 
