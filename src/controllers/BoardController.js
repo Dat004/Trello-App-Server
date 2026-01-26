@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const { deleteBoard } = require("../services/board/delete");
+const Workspace = require("../models/Workspace.model");
 const Board = require("../models/Board.model");
 const {
   boardSchema,
@@ -23,13 +24,38 @@ module.exports.create = async (req, res, next) => {
 
     if (workspaceId) {
       boardData.workspace = workspaceId;
-      // Check quyền tạo board trong workspace (dùng permissions của workspace)
-      const workspace = req.workspace; // từ middleware requireWorkspaceMember
+      
+      // Fetch workspace vì route này không có middleware requireWorkspaceMember
+      const workspace = await Workspace.findOne({
+        _id: workspaceId,
+        deleted_at: null,
+      });
+
+      if (!workspace) {
+        const err = new Error("Workspace không tồn tại");
+        err.statusCode = 404;
+        return next(err);
+      }
+
+      // Xác định role của user trong workspace
+      const isOwner = workspace.owner.equals(req.user._id);
+      const member = workspace.members.find(m => m.user.equals(req.user._id));
+
+      if (!isOwner && !member) {
+        const err = new Error("Bạn không phải thành viên của workspace này");
+        err.statusCode = 403;
+        return next(err);
+      }
+
+      const userRoleInWorkspace = isOwner ? "admin" : member.role;
+
+      // Check quyền tạo board dựa trên settings của workspace
       const allowedCreate =
         workspace.permissions.canCreateBoard === "admin_member"
           ? ["admin", "member"]
           : ["admin"];
-      if (!allowedCreate.includes(req.userRoleInWorkspace)) {
+
+      if (!allowedCreate.includes(userRoleInWorkspace)) {
         const err = new Error(
           "Bạn không có quyền tạo board trong workspace này"
         );
