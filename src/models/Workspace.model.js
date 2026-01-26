@@ -79,6 +79,30 @@ const WorkspaceSchema = new Schema({
       },
     },
   ],
+  join_requests: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+      message: {
+        type: String,
+        trim: true,
+        maxlength: [200, "Lời nhắn không quá 200 ký tự"],
+        default: "",
+      },
+      requested_at: {
+        type: Date,
+        default: Date.now,
+      },
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "declined"],
+        default: "pending",
+      },
+    },
+  ],
   visibility: {
     type: String,
     enum: ["private", "public"],
