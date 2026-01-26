@@ -21,6 +21,15 @@ router.get('/:workspaceId/members', protect, requireWorkspaceMember, WorkspaceCo
 // [POST] /api/workspaces/:workspaceId/members
 router.post('/:workspaceId/invite', protect, requireWorkspaceMember, WorkspaceController.inviteMember);
 
+// [PATCH] /api/workspaces/:workspaceId/join/:requestId
+router.patch('/:workspaceId/join/:requestId', protect, requireWorkspaceMember, requireWorkspaceAdmin, WorkspaceController.handleJoinRequest);
+
+// [POST] /api/workspaces/:workspaceId/join
+router.post('/:workspaceId/join', protect, WorkspaceController.sendJoinRequest);
+
+// [GET] /api/workspaces/:workspaceId/join
+router.get('/:workspaceId/join', protect, requireWorkspaceMember, requireWorkspaceAdmin, WorkspaceController.getJoinRequests);
+
 // [DELETE] /api/workspaces/:workspaces
 router.delete('/:workspaceId', protect, requireWorkspaceAdmin, WorkspaceController.delete);
 

@@ -80,6 +80,20 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
       },
     ]);
 
+    // Join với User để lấy thông tin thành viên
+    await Workspace.populate(workspaces, 
+      {
+        path: "members.user",
+        select: "_id full_name avatar.url email",
+      }
+    );
+    await Workspace.populate(workspaces, 
+      {
+        path: "join_requests.user",
+        select: "_id full_name avatar.url email",
+      }
+    );
+
     res.status(200).json({
       success: true,
       message: "Lấy danh sách workspace thành công",
@@ -223,8 +237,8 @@ exports.inviteMember = async (req, res, next) => {
     const userRole = isOwner
       ? "admin"
       : currentMember
-      ? currentMember.role
-      : null;
+        ? currentMember.role
+        : null;
 
     const allowedInvite =
       workspace.permissions.canInviteMember === "admin_member"
@@ -384,6 +398,171 @@ exports.kickMember = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Xóa thành viên thành công",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Gửi yêu cầu tham gia workspace
+exports.sendJoinRequest = async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const { message } = req.body;
+    const userId = req.user._id;
+
+    const workspace = await Workspace.findOne({ _id: workspaceId, deleted_at: null });
+    if (!workspace) {
+      return res.status(404).json({ success: false, message: "Workspace không tồn tại" });
+    }
+
+    // // Chỉ cho phép gửi yêu cầu nếu workspace là công khai (public)
+    // if (workspace.visibility !== "public") {
+    //   return res.status(403).json({ success: false, message: "Workspace này là riêng tư, không thể gửi yêu cầu tham gia" });
+    // }
+
+    // Kiểm tra xem user đã là thành viên chưa
+    const isMember = workspace.members.some(m => m.user.equals(userId));
+    if (isMember) {
+      return res.status(400).json({ success: false, message: "Bạn đã là thành viên của workspace này" });
+    }
+
+    // Kiểm tra xem user có đang được mời không
+    const userEmail = req.user.email;
+    const isInvited = workspace.invites.some(i => i.email === userEmail && i.status === "pending");
+    if (isInvited) {
+      return res.status(400).json({ success: false, message: "Bạn đang có một lời mời tham gia workspace này, hãy kiểm tra thông báo" });
+    }
+
+    // Kiểm tra xem user đã gửi yêu cầu tham gia chưa
+    const hasPendingRequest = workspace.join_requests.some(
+      r => r.user.toString() === userId.toString() && r.status === "pending"
+    );
+    if (hasPendingRequest) {
+      return res.status(400).json({ success: false, message: "Bạn đã gửi yêu cầu tham gia và đang chờ duyệt" });
+    }
+
+    workspace.join_requests.push({
+      user: userId,
+      message: message || "",
+      status: "pending",
+    });
+
+    await workspace.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Gửi yêu cầu tham gia thành công",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Lấy danh sách yêu cầu tham gia (chỉ admin/owner mới được xem)
+exports.getJoinRequests = async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const workspace = await Workspace.findOne({ _id: workspaceId, deleted_at: null })
+      .populate("join_requests.user", "full_name email avatar.url");
+
+    if (!workspace) {
+      return res.status(404).json({ success: false, message: "Workspace không tồn tại" });
+    }
+
+    // Lọc ra các yêu cầu tham gia đang chờ duyệt
+    const pendingRequests = workspace.join_requests.filter(r => r.status === "pending");
+
+    res.status(200).json({
+      success: true,
+      data: { join_requests: pendingRequests },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Xử lý yêu cầu tham gia (Accept/Decline)
+exports.handleJoinRequest = async (req, res, next) => {
+  try {
+    const { workspaceId, requestId } = req.params;
+    const { status } = req.body; // 'accepted' hoặc 'declined'
+
+    if (!["accepted", "declined"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
+    }
+
+    const workspace = await Workspace.findOne({ _id: workspaceId, deleted_at: null });
+    if (!workspace) {
+      return res.status(404).json({ success: false, message: "Workspace không tồn tại" });
+    }
+
+    // Tìm yêu cầu trong mảng join_requests
+    const request = workspace.join_requests.id(requestId);
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Yêu cầu không tồn tại hoặc đã được xử lý" });
+    }
+
+    let newMember = null;
+    const targetUserId = request.user._id;
+
+    if (status === "accepted") {
+      // Kiểm tra xem người này có VỪA MỚI trở thành member không
+      const isAlreadyMember = workspace.members.some(m => m.user.equals(targetUserId));
+      if (isAlreadyMember) {
+        // Nếu đã là member rồi thì chỉ cần xóa yêu cầu tham gia đi
+        workspace.join_requests.pull(requestId);
+        await workspace.save();
+        return res.status(400).json({ success: false, message: "Người dùng này đã là thành viên của workspace" });
+      }
+
+      // Kiểm tra giới hạn thành viên
+      if (workspace.members.length >= workspace.max_members) {
+        return res.status(400).json({ success: false, message: "Workspace đã đạt giới hạn thành viên" });
+      }
+      
+      // Thêm vào mảng members
+      newMember = {
+        user: targetUserId,
+        role: "member",
+        joinedAt: new Date(),
+      };
+      workspace.members.push(newMember);
+
+      // Tìm email của user này để xóa trong mảng invites (nếu có)
+      const targetUser = await User.findById(targetUserId);
+      if (targetUser) {
+        workspace.invites = workspace.invites.filter(i => i.email !== targetUser.email);
+      }
+    }
+
+    // Xóa yêu cầu này khỏi danh sách chờ để dọn dẹp
+    workspace.join_requests.pull(requestId);
+
+    await workspace.save();
+
+    // Nếu đồng ý, ta cần populate thông tin user cho member mới để trả về cho FE
+    if (status === "accepted" && newMember) {
+      // Lấy member mới nhất từ mảng members (để có đầy đủ logic ID của mongoose nếu cần)
+      // Hoặc đơn giản là dùng bản object vừa tạo và populate nó
+      const populatedWorkspace = await Workspace.populate(workspace, {
+        path: "members.user",
+        select: "_id full_name avatar.url email",
+      });
+
+      // Tìm member vừa được thêm vào trong mảng đã populate
+      const addedMember = populatedWorkspace.members.find(m => m.user._id.equals(targetUserId));
+
+      return res.status(200).json({
+        success: true,
+        message: "Đã chấp nhận yêu cầu tham gia",
+        data: { member: addedMember }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Đã từ chối yêu cầu tham gia",
     });
   } catch (error) {
     next(error);
