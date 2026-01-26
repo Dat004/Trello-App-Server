@@ -21,58 +21,78 @@ const requireBoardAccess = async (req, res, next) => {
       m.user.equals(userId)
     );
 
-    // Personal board hoặc private board
-    if (!board.workspace || board.visibility === "private") {
-      if (!isOwner && !isBoardMember) {
-        const err = new Error("Bạn không có quyền truy cập board này");
-        err.statusCode = 403;
-        return next(err);
-      }
-    }
-    // Workspace board với visibility 'workspace'
-    else if (board.visibility === "workspace") {
+    // Quyền truy cập ngầm định thông qua Workspace
+    let isWorkspaceAdminOrOwner = false;
+    if (board.workspace) {
       const workspace = await Workspace.findOne({
         _id: board.workspace,
         deleted_at: null,
       });
-      if (!workspace) {
-        const err = new Error("Workspace chứa bảng này không tồn tại");
-        err.statusCode = 404;
-        return next(err);
-      }
 
-      const isWorkspaceMember = workspace.members.some((m) =>
-        m.user.equals(userId)
-      );
+      if (workspace) {
+        const isOwnerWorkspace = workspace.owner.equals(userId);
+        const isAdminWorkspace = workspace.members.some(
+          (m) => m.user.equals(userId) && m.role === "admin"
+        );
+        isWorkspaceAdminOrOwner = isOwnerWorkspace || isAdminWorkspace;
 
-      if (!isOwner && !isBoardMember && !isWorkspaceMember) {
-        const err = new Error("Bạn không có quyền truy cập board này");
-        err.statusCode = 403;
-        return next(err);
+        // Nếu là member của workspace và board có tính ẩn 'workspace'
+        if (board.visibility === "workspace") {
+          const isWorkspaceMember = workspace.members.some((m) =>
+            m.user.equals(userId)
+          );
+          if (isWorkspaceMember) {
+            req.board = board;
+            return next();
+          }
+        }
       }
     }
 
-    // Gán board vào req
-    req.board = board;
-    next();
+    // Kiểm tra quyền truy cập trực tiếp
+    if (isOwner || isBoardMember || isWorkspaceAdminOrOwner) {
+      req.board = board;
+      return next();
+    }
+
+    // Nếu không thuộc các trường hợp trên
+    const err = new Error("Bạn không có quyền truy cập board này");
+    err.statusCode = 403;
+    return next(err);
   } catch (error) {
     next(error);
   }
 };
 
-// Middleware check user là owner hoặc admin của board
+// Middleware check user là owner hoặc admin của board (bao gồm cả Workspace Admin/Owner)
 const requireBoardAdmin = async (req, res, next) => {
   try {
     const board = req.board; // từ requireBoardAccess
     const userId = req.user._id;
 
-    const isOwner = board.owner.equals(req.user._id);
+    const isOwner = board.owner.equals(userId);
     const isAdmin = board.members.some(
       (m) => m.user.equals(userId) && m.role === "admin"
     );
 
-    if (!isOwner && !isAdmin) {
-      const err = new Error("Bạn cần quyền admin để cập nhật board này");
+    // Kiểm tra quyền Admin ngầm định từ Workspace
+    let isWorkspaceAdminOrOwner = false;
+    if (board.workspace) {
+      const workspace = await Workspace.findOne({
+        _id: board.workspace,
+        deleted_at: null,
+      });
+      if (workspace) {
+        const isOwnerWorkspace = workspace.owner.equals(userId);
+        const isAdminWorkspace = workspace.members.some(
+          (m) => m.user.equals(userId) && m.role === "admin"
+        );
+        isWorkspaceAdminOrOwner = isOwnerWorkspace || isAdminWorkspace;
+      }
+    }
+
+    if (!isOwner && !isAdmin && !isWorkspaceAdminOrOwner) {
+      const err = new Error("Bạn cần quyền admin để thực hiện hành động này");
       err.statusCode = 403;
       return next(err);
     }
