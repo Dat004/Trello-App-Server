@@ -1,5 +1,6 @@
 const attachmentRouter = require('./attachment');
 const workspaceRouter = require('./workspaces');
+const favoritesRouter = require('./favorites');
 const commentRouter = require('./comment');
 const uploadRouter = require('./upload');
 const boardRouter = require('./boards');
@@ -24,12 +25,15 @@ function router(app) {
     // Workspace routes
     app.use('/api/workspaces', workspaceRouter);
 
+    // Favorites routes
+    app.use('/api/favorites', favoritesRouter);
+
     // Board routes
     app.use('/api/boards', boardRouter);
 
     // Upload routes
     app.use('/api/upload', uploadRouter);
-    
+
     // Auth routes
     app.use('/api/auth', authRouter);
 
