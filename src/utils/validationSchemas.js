@@ -172,6 +172,12 @@ const attachmentInputSchema = z.object({
   message: z.string().trim().optional().default(""),
 });
 
+// Schema cho tạo board từ template
+const createBoardFromTemplateSchema = z.object({
+  title: z.string().trim().min(1).max(100).optional(),
+  workspaceId: objectJd.optional().nullable(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -187,4 +193,5 @@ module.exports = {
   listSchema,
   cardSchema,
   attachmentInputSchema,
+  createBoardFromTemplateSchema,
 };
