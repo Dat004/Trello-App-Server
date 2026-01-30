@@ -45,6 +45,9 @@ router.delete("/:workspaceId/boards", protect, requireWorkspaceAdmin, WorkspaceC
 // [POST] /api/workspaces/create
 router.post("/create", protect, WorkspaceController.create);
 
+// GET /api/workspaces/:workspaceId
+router.get("/:workspaceId", protect, WorkspaceController.getWorkspaceById);
+
 // GET /api/workspaces
 router.get("/", protect, WorkspaceController.getMyWorkspaces);
 
