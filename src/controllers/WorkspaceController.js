@@ -55,24 +55,37 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
       },
 
       // Join với Board để lấy các board thuộc workspace này
+      // Join với Board để lấy số lượng board chưa xóa
       {
         $lookup: {
           from: "boards",
-          localField: "_id",
-          foreignField: "workspace",
-          as: "boards",
+          let: { workspaceId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$workspace", "$$workspaceId"] },
+                deleted_at: null,
+              },
+            },
+            { $count: "count" },
+          ],
+          as: "board_count_data",
         },
       },
 
-      // Số lượng board
+      // Lấy giá trị count từ mảng kết quả
       {
         $addFields: {
-          board_count: { $size: "$boards" },
+          board_count: {
+            $ifNull: [{ $arrayElemAt: ["$board_count_data.count", 0] }, 0],
+          },
         },
       },
 
       {
-        $unset: "boards", // Xóa boards
+        $project: {
+          board_count_data: 0,
+        },
       },
 
       {
@@ -98,6 +111,73 @@ module.exports.getMyWorkspaces = async (req, res, next) => {
       success: true,
       message: "Lấy danh sách workspace thành công",
       data: { workspaces },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET chi tiết workspace theo ID
+module.exports.getWorkspaceById = async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+
+    // Lấy workspace và populate thông tin
+    const workspace = await Workspace.findOne({
+      _id: workspaceId,
+      deleted_at: null,
+    })
+      .populate("members.user", "_id full_name avatar.url email")
+      .populate("join_requests.user", "_id full_name avatar.url email")
+
+    if (!workspace) {
+      const error = new Error("Workspace không tồn tại");
+      error.statusCode = 404;
+      return next(error);
+    }
+
+    // Kiểm tra membership status của user hiện tại
+    const isOwner = workspace.owner._id.equals(req.user._id);
+    const memberRecord = workspace.members.find((m) =>
+      m.user && m.user._id.equals(req.user._id)
+    );
+    const isMember = isOwner || !!memberRecord;
+
+    // Nếu user chưa là member, chỉ trả về thông tin cơ bản
+    if (!isMember) {
+      const pendingRequest = workspace.join_requests.find(
+        (jr) => jr.user && jr.user._id.equals(req.user._id) && jr.status === "pending"
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Lấy thông tin workspace thành công",
+        data: {
+          workspace: {
+            _id: workspace._id,
+            name: workspace.name,
+            description: workspace.description,
+          },
+          is_member: false,
+          has_pending_request: !!pendingRequest,
+          requested_at: pendingRequest ? pendingRequest.requested_at : null,
+        },
+      });
+    }
+
+    // User là member, trả về thông tin đầy đủ
+    const boardCount = await Board.countDocuments({
+      workspace: workspaceId,
+      deleted_at: null,
+    });
+
+    const workspaceData = workspace.toObject();
+    workspaceData.board_count = boardCount;
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy chi tiết workspace thành công",
+      data: { workspace: workspaceData },
     });
   } catch (error) {
     next(error);
@@ -142,6 +222,7 @@ module.exports.updateWorkspace = async (req, res, next) => {
 
     const boardCount = await Board.countDocuments({
       workspace: req.params.workspaceId,
+      deleted_at: null,
     });
 
     res.status(200).json({
