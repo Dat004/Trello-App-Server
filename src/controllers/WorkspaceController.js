@@ -9,6 +9,19 @@ const {
   updateWorkspaceSchema,
   updatePermissionsSchema,
 } = require("../utils/validationSchemas");
+const {
+  logWorkspaceCreated,
+  logWorkspaceUpdated,
+  logWorkspaceDeleted,
+  logMemberAdded,
+  logMemberRemoved,
+  logMemberRoleChanged,
+  logPermissionChanged,
+  logJoinRequestApproved,
+  logJoinRequestRejected,
+  logBoardMovedToWorkspace,
+  logBoardRemovedFromWorkspace,
+} = require("../services/activity/log");
 
 // Tạo workspace mới
 module.exports.create = async (req, res, next) => {
@@ -23,6 +36,12 @@ module.exports.create = async (req, res, next) => {
       owner: req.user._id,
       members: [{ user: req.user._id, role: "admin" }],
     });
+
+    // Populate members để lấy thông tin user
+    await newWorkspace.populate("members.user", "_id full_name avatar.url email");
+
+    // Log activity
+    logWorkspaceCreated(newWorkspace, req.user._id);
 
     res.status(201).json({
       success: true,
@@ -211,6 +230,12 @@ module.exports.updateWorkspace = async (req, res, next) => {
   try {
     const validatedData = updateWorkspaceSchema.parse(req.body);
 
+    // Lấy workspace cũ để track changes
+    const oldWorkspace = await Workspace.findOne({
+      _id: req.params.workspaceId,
+      deleted_at: null,
+    });
+
     const updatedWorkspace = await Workspace.findOneAndUpdate(
       {
         _id: req.params.workspaceId,
@@ -219,6 +244,27 @@ module.exports.updateWorkspace = async (req, res, next) => {
       { $set: validatedData },
       { new: true, runValidators: true }
     );
+
+    // Log activity with changes
+    const changes = {};
+    if (validatedData.name && oldWorkspace.name !== validatedData.name) {
+      changes.name = { from: oldWorkspace.name, to: validatedData.name };
+    }
+    if (validatedData.description !== undefined && oldWorkspace.description !== validatedData.description) {
+      changes.description = { from: oldWorkspace.description, to: validatedData.description };
+    }
+    if (validatedData.color && oldWorkspace.color !== validatedData.color) {
+      changes.color = { from: oldWorkspace.color, to: validatedData.color };
+    }
+    if (validatedData.visibility && oldWorkspace.visibility !== validatedData.visibility) {
+      changes.visibility = { from: oldWorkspace.visibility, to: validatedData.visibility };
+    }
+    if (validatedData.max_members !== undefined && oldWorkspace.max_members !== validatedData.max_members) {
+      changes.max_members = { from: oldWorkspace.max_members, to: validatedData.max_members };
+    }
+    if (Object.keys(changes).length > 0) {
+      logWorkspaceUpdated(updatedWorkspace, req.user._id, changes);
+    }
 
     const boardCount = await Board.countDocuments({
       workspace: req.params.workspaceId,
@@ -258,6 +304,9 @@ module.exports.delete = async (req, res, next) => {
       actor: user._id,
     });
 
+    // Log activity
+    logWorkspaceDeleted(workspace, user._id);
+
     return res.status(200).json({
       success: true,
       message: "Xóa workspace thành công.",
@@ -272,6 +321,12 @@ module.exports.updatePermissions = async (req, res, next) => {
   try {
     const validatedData = updatePermissionsSchema.parse(req.body);
 
+    // Lấy old permissions để track changes
+    const oldWorkspace = await Workspace.findOne({
+      _id: req.params.workspaceId,
+      deleted_at: null,
+    });
+
     const updatedWorkspace = await Workspace.findOneAndUpdate(
       {
         _id: req.params.workspaceId,
@@ -280,6 +335,24 @@ module.exports.updatePermissions = async (req, res, next) => {
       { $set: { permissions: validatedData } },
       { new: true, runValidators: true }
     ).select("permissions");
+
+    // Log permission changes
+    const changes = {};
+    if (oldWorkspace.permissions.canCreateBoard !== validatedData.canCreateBoard) {
+      changes.canCreateBoard = {
+        from: oldWorkspace.permissions.canCreateBoard,
+        to: validatedData.canCreateBoard
+      };
+    }
+    if (oldWorkspace.permissions.canInviteMember !== validatedData.canInviteMember) {
+      changes.canInviteMember = {
+        from: oldWorkspace.permissions.canInviteMember,
+        to: validatedData.canInviteMember
+      };
+    }
+    if (Object.keys(changes).length > 0) {
+      logPermissionChanged(oldWorkspace, req.user._id, changes);
+    }
 
     res.status(200).json({
       success: true,
@@ -406,6 +479,8 @@ module.exports.updateMemberRole = async (req, res, next) => {
       return next(err);
     }
 
+    const oldRole = updatingMember.role;
+
     await Workspace.updateOne(
       {
         _id: req.params.workspaceId,
@@ -417,6 +492,19 @@ module.exports.updateMemberRole = async (req, res, next) => {
         },
       }
     );
+
+    // Log activity
+    const member = await User.findById(member_id);
+    logMemberRoleChanged({
+      entityType: 'workspace',
+      entityId: workspace._id,
+      workspace: workspace._id,
+      board: null,
+      member,
+      oldRole,
+      newRole: role,
+      actor: req.user._id
+    });
 
     // Trả về gọn nhẹ
     res.status(200).json({
@@ -474,6 +562,17 @@ exports.kickMember = async (req, res, next) => {
         },
       }
     );
+
+    // Log activity
+    const member = await User.findById(member_id);
+    logMemberRemoved({
+      entityType: 'workspace',
+      entityId: workspace._id,
+      workspace: workspace._id,
+      board: null,
+      member,
+      actor: req.user._id
+    });
 
     // Không cần trả về data mới, chỉ cần báo thành công
     res.status(200).json({
@@ -615,6 +714,13 @@ exports.handleJoinRequest = async (req, res, next) => {
       if (targetUser) {
         workspace.invites = workspace.invites.filter(i => i.email !== targetUser.email);
       }
+
+      // Log join request approved
+      logJoinRequestApproved(workspace, req.user._id, targetUser);
+    } else {
+      // Log join request rejected
+      const targetUser = await User.findById(targetUserId);
+      logJoinRequestRejected(workspace, req.user._id, targetUser);
     }
 
     // Xóa yêu cầu này khỏi danh sách chờ để dọn dẹp
@@ -700,6 +806,12 @@ exports.addBoardsToWorkspace = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Không tìm thấy board nào trong workspace này" });
     }
 
+    // Log activity for each board moved
+    const workspace = await Workspace.findById(workspaceId);
+    for (const board of boards) {
+      logBoardMovedToWorkspace(board, workspace, userId);
+    }
+
     res.status(200).json({
       success: true,
       message: `Đã thêm ${boardIds.length} board vào workspace thành công`,
@@ -720,6 +832,13 @@ exports.removeBoardsFromWorkspace = async (req, res, next) => {
     }
 
     // Workspace Owner/Admin có quyền tối cao, có thể loại bỏ bất kỳ board nào trong workspace
+    // Fetch boards before update for logging
+    const boards = await Board.find({
+      _id: { $in: boardIds },
+      workspace: workspaceId,
+      deleted_at: null
+    });
+
     const result = await Board.updateMany(
       {
         _id: { $in: boardIds },
@@ -736,6 +855,12 @@ exports.removeBoardsFromWorkspace = async (req, res, next) => {
 
     if (result.modifiedCount === 0) {
       return res.status(404).json({ success: false, message: "Không tìm thấy board nào trong workspace này" });
+    }
+
+    // Log activity for each board removed
+    const workspace = await Workspace.findById(workspaceId);
+    for (const board of boards) {
+      logBoardRemovedFromWorkspace(board, workspace, req.user._id);
     }
 
     res.status(200).json({

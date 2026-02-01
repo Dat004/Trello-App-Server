@@ -1,5 +1,9 @@
 const Comment = require("../models/Comment.model");
 const { emitToRoom } = require("../utils/socketHelper");
+const {
+  logCommentCreated,
+  logCommentDeleted,
+} = require("../services/activity/log");
 
 module.exports.addComment = async (req, res, next) => {
   try {
@@ -60,6 +64,9 @@ module.exports.addComment = async (req, res, next) => {
       data: newComment,
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity
+    logCommentCreated(newComment, card, req.board, req.user._id);
 
     res.status(201).json({
       success: true,
@@ -282,6 +289,10 @@ module.exports.destroyComment = async (req, res, next) => {
       data: { commentId: comment._id, deletedCount: idsToDelete.length },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity
+    const card = req.card;
+    logCommentDeleted(comment, card, req.board, req.user._id);
 
     res.status(200).json({
       success: true,
