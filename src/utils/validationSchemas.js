@@ -178,6 +178,13 @@ const createBoardFromTemplateSchema = z.object({
   workspaceId: objectJd.optional().nullable(),
 });
 
+// Schema cho query activities
+const getActivitiesSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  action: z.string().optional(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -194,4 +201,5 @@ module.exports = {
   cardSchema,
   attachmentInputSchema,
   createBoardFromTemplateSchema,
+  getActivitiesSchema,
 };

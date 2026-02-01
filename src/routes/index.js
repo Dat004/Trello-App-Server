@@ -1,6 +1,7 @@
 const attachmentRouter = require('./attachment');
 const workspaceRouter = require('./workspaces');
 const favoritesRouter = require('./favorites');
+const activityRouter = require('./activities');
 const templateRouter = require('./templates');
 const commentRouter = require('./comment');
 const uploadRouter = require('./upload');
@@ -25,6 +26,9 @@ function router(app) {
 
     // Workspace routes
     app.use('/api/workspaces', workspaceRouter);
+
+    // Activity routes
+    app.use('/api/activities', activityRouter);
 
     // Favorites routes
     app.use('/api/favorites', favoritesRouter);
