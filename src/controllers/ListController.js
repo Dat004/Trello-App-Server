@@ -2,6 +2,12 @@ const { listSchema } = require("../utils/validationSchemas");
 const { deleteList } = require("../services/list/delete");
 const List = require("../models/List.model");
 const { emitToRoom } = require("../utils/socketHelper");
+const {
+  logListCreated,
+  logListUpdated,
+  logListDeleted,
+  logListMoved,
+} = require("../services/activity/log");
 
 // Tạo list mới
 module.exports.create = async (req, res, next) => {
@@ -32,6 +38,9 @@ module.exports.create = async (req, res, next) => {
       data: { list: newList },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity
+    logListCreated(newList, req.board, req.user._id);
 
     res.status(201).json({
       success: true,
@@ -69,6 +78,18 @@ module.exports.updateList = async (req, res, next) => {
   try {
     const validatedData = listSchema.parse(req.body);
 
+    // Fetch old list data for change tracking
+    const oldList = await List.findOne({
+      _id: req.params.listId,
+      deleted_at: null,
+    });
+
+    if (!oldList) {
+      const err = new Error("List không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
     const updatedList = await List.findOneAndUpdate(
       {
         _id: req.params.listId,
@@ -78,12 +99,6 @@ module.exports.updateList = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    if (!updatedList) {
-      const err = new Error("List không tồn tại");
-      err.statusCode = 404;
-      return next(err);
-    }
-
     // Socket.io emit
     emitToRoom({
       room: `board:${req.params.boardId}`,
@@ -91,6 +106,18 @@ module.exports.updateList = async (req, res, next) => {
       data: { listId: updatedList._id, list: updatedList },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity with proper change tracking
+    const changes = {};
+    if (validatedData.title && oldList.title !== validatedData.title) {
+      changes.title = { from: oldList.title, to: validatedData.title };
+    }
+    if (validatedData.color && oldList.color !== validatedData.color) {
+      changes.color = { from: oldList.color, to: validatedData.color };
+    }
+    if (Object.keys(changes).length > 0) {
+      logListUpdated(updatedList, req.board, req.user._id, changes);
+    }
 
     res.status(200).json({
       success: true,
@@ -106,6 +133,19 @@ module.exports.updateList = async (req, res, next) => {
 module.exports.deleteList = async (req, res, next) => {
   try {
     const { listId, boardId } = req.params;
+
+    // Fetch list before deletion for logging
+    const list = await List.findOne({
+      _id: listId,
+      deleted_at: null,
+    });
+
+    if (!list) {
+      const err = new Error("List không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
     await deleteList(listId, { actor: req.user._id });
 
     // Socket.io emit
@@ -115,6 +155,9 @@ module.exports.deleteList = async (req, res, next) => {
       data: { listId },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity
+    logListDeleted(list, req.board, req.user._id);
 
     res.status(200).json({
       success: true,
@@ -239,6 +282,9 @@ module.exports.updateListPosition = async (req, res, next) => {
       data: { listId: updatedList._id, pos: updatedList.pos },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity (general position change, no specific from/to)
+    logListMoved(updatedList, req.board, req.user._id, null, null);
 
     res.status(200).json({
       success: true,

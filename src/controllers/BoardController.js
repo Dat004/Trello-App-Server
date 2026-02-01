@@ -3,11 +3,21 @@ const mongoose = require("mongoose");
 const { deleteBoard } = require("../services/board/delete");
 const Workspace = require("../models/Workspace.model");
 const Board = require("../models/Board.model");
+const User = require("../models/User.model");
 const {
   boardSchema,
   inviteMemberSchema,
   updateBoardsSchema,
 } = require("../utils/validationSchemas");
+const {
+  logBoardCreated,
+  logBoardUpdated,
+  logBoardDeleted,
+  logBoardArchived,
+  logBoardRestored,
+  logMemberRemoved,
+  logMemberAdded,
+} = require("../services/activity/log");
 
 module.exports.create = async (req, res, next) => {
   try {
@@ -24,7 +34,7 @@ module.exports.create = async (req, res, next) => {
 
     if (workspaceId) {
       boardData.workspace = workspaceId;
-      
+
       // Fetch workspace vì route này không có middleware requireWorkspaceMember
       const workspace = await Workspace.findOne({
         _id: workspaceId,
@@ -65,6 +75,9 @@ module.exports.create = async (req, res, next) => {
     }
 
     const newBoard = await Board.create(boardData);
+
+    // Log activity
+    logBoardCreated(newBoard, req.user._id);
 
     res.status(201).json({
       success: true,
@@ -308,6 +321,12 @@ module.exports.updateBoard = async (req, res, next) => {
   try {
     const validatedData = updateBoardsSchema.parse(req.body);
 
+    // Lấy board cũ để track changes
+    const oldBoard = await Board.findOne({
+      _id: req.params.boardId,
+      deleted_at: null,
+    });
+
     const updatedBoard = await Board.findOneAndUpdate(
       {
         _id: req.params.boardId,
@@ -324,6 +343,24 @@ module.exports.updateBoard = async (req, res, next) => {
       });
     }
 
+    // Log activity with changes
+    const changes = {};
+    if (validatedData.title && oldBoard.title !== validatedData.title) {
+      changes.title = { from: oldBoard.title, to: validatedData.title };
+    }
+    if (validatedData.description !== undefined && oldBoard.description !== validatedData.description) {
+      changes.description = { from: oldBoard.description, to: validatedData.description };
+    }
+    if (validatedData.color && oldBoard.color !== validatedData.color) {
+      changes.color = { from: oldBoard.color, to: validatedData.color };
+    }
+    if (validatedData.visibility && oldBoard.visibility !== validatedData.visibility) {
+      changes.visibility = { from: oldBoard.visibility, to: validatedData.visibility };
+    }
+    if (Object.keys(changes).length > 0) {
+      logBoardUpdated(updatedBoard, req.user._id, changes);
+    }
+
     res.status(200).json({
       success: true,
       message: "Cập nhật board thành công",
@@ -337,7 +374,12 @@ module.exports.updateBoard = async (req, res, next) => {
 // Xóa board
 module.exports.destroy = async (req, res, next) => {
   try {
+    const board = req.board;
+
     await deleteBoard(req.params.boardId, { actor: req.user._id });
+
+    // Log activity
+    logBoardDeleted(board, req.user._id);
 
     res.status(200).json({
       success: true,
@@ -365,6 +407,9 @@ exports.archiveBoard = async (req, res, next) => {
       { new: true }
     );
 
+    // Log activity
+    logBoardArchived(updatedBoard, req.user._id);
+
     res.status(200).json({
       success: true,
       message: "Board đã được lưu trữ thành công",
@@ -391,6 +436,9 @@ exports.unarchiveBoard = async (req, res, next) => {
       { archived: false },
       { new: true }
     );
+
+    // Log activity
+    logBoardRestored(updatedBoard, req.user._id);
 
     res.status(200).json({
       success: true,
@@ -435,6 +483,17 @@ module.exports.inviteMemberToBoard = async (req, res, next) => {
 
     await board.save();
 
+    // // Log activity
+    // logMemberAdded({
+    //   entityType: 'board',
+    //   entityId: board._id,
+    //   workspace: board.workspace || null,
+    //   board: board._id,
+    //   member: invitedUser,
+    //   role,
+    //   actor: req.user._id
+    // });
+
     res.status(200).json({
       success: true,
       message: "Mời thành viên vào board thành công",
@@ -469,6 +528,17 @@ module.exports.kickMemberFromBoard = async (req, res, next) => {
 
     board.members.splice(memberIndex, 1);
     await board.save();
+
+    // Log activity
+    const member = await User.findById(memberUserId);
+    logMemberRemoved({
+      entityType: 'board',
+      entityId: board._id,
+      workspace: board.workspace || null,
+      board: board._id,
+      member,
+      actor: req.user._id
+    });
 
     res.status(200).json({
       success: true,

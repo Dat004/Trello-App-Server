@@ -4,6 +4,12 @@ const List = require("../models/List.model");
 const { emitToRoom } = require("../utils/socketHelper");
 
 const { cardSchema } = require("../utils/validationSchemas");
+const {
+  logCardCreated,
+  logCardUpdated,
+  logCardDeleted,
+  logCardMoved,
+} = require("../services/activity/log");
 
 module.exports.getCardsByList = async (req, res, next) => {
   try {
@@ -89,6 +95,9 @@ module.exports.create = async (req, res, next) => {
       socketId: req.headers["x-socket-id"],
     });
 
+    // Log activity
+    logCardCreated(newCard, list, req.board, req.user._id);
+
     res.status(201).json({
       success: true,
       message: "Tạo card thành công",
@@ -105,16 +114,19 @@ module.exports.updateInfo = async (req, res, next) => {
     const validatedData = cardSchema.parse(req.body);
     const cardId = req.params.cardId;
 
+    // Fetch old card data for change tracking
+    const oldCard = await Card.findOne({ _id: cardId, deleted_at: null });
+    if (!oldCard) {
+      const err = new Error("Không tìm thấy card");
+      err.statusCode = 404;
+      return next(err);
+    }
+
     const card = await Card.findOneAndUpdate(
       { _id: cardId, deleted_at: null },
       { $set: validatedData },
       { new: true, runValidators: true }
     );
-    if (!card) {
-      const err = new Error("Không tìm thấy card");
-      err.statusCode = 404;
-      return next(err);
-    }
 
     // Socket.io emit
     emitToRoom({
@@ -123,6 +135,25 @@ module.exports.updateInfo = async (req, res, next) => {
       data: { cardId: card._id, updates: validatedData },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity with proper from/to tracking
+    const changes = {};
+    if (validatedData.title && oldCard.title !== validatedData.title) {
+      changes.title = { from: oldCard.title, to: validatedData.title };
+    }
+    if (validatedData.description !== undefined && oldCard.description !== validatedData.description) {
+      changes.description = { from: oldCard.description, to: validatedData.description };
+    }
+    if (validatedData.due_date !== undefined && oldCard.due_date !== validatedData.due_date) {
+      changes.due_date = { from: oldCard.due_date, to: validatedData.due_date };
+    }
+    if (validatedData.priority && oldCard.priority !== validatedData.priority) {
+      changes.priority = { from: oldCard.priority, to: validatedData.priority };
+    }
+    if (Object.keys(changes).length > 0) {
+      const list = await List.findById(card.list);
+      logCardUpdated(card, list, req.board, req.user._id, changes);
+    }
 
     res.status(201).json({
       success: true,
@@ -138,6 +169,9 @@ module.exports.updateInfo = async (req, res, next) => {
 module.exports.delete = async (req, res, next) => {
   try {
     const { cardId, boardId } = req.params;
+    const card = req.card;
+    const list = await List.findById(card.list);
+
     await deleteCard(cardId, { actor: req.user._id });
 
     // Socket.io emit
@@ -147,6 +181,9 @@ module.exports.delete = async (req, res, next) => {
       data: { cardId },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity
+    logCardDeleted(card, list, req.board, req.user._id);
 
     res.status(201).json({
       success: true,
@@ -317,6 +354,13 @@ module.exports.moveCard = async (req, res, next) => {
       },
       socketId: req.headers["x-socket-id"],
     });
+
+    // Log activity if moved to different list (general move, no specific positions)
+    if (sourceListId !== targetListId) {
+      const fromList = await List.findById(sourceListId);
+      const toList = await List.findById(targetListId);
+      logCardMoved(updatedCard, fromList, toList, req.board, req.user._id);
+    }
 
     res.status(200).json({
       success: true,

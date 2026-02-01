@@ -2,6 +2,10 @@ const cloudinary = require("cloudinary").v2;
 const Attachment = require("../models/Attachment.model");
 
 const { attachmentInputSchema } = require("../utils/validationSchemas");
+const {
+  logAttachmentUploaded,
+  logAttachmentDeleted,
+} = require("../services/activity/log");
 
 module.exports.addAttachment = async (req, res, next) => {
   try {
@@ -19,6 +23,10 @@ module.exports.addAttachment = async (req, res, next) => {
     const newAttachment = await Attachment.create(attachmentData);
 
     await newAttachment.populate("uploaded_by", "full_name avatar");
+
+    // Log activity
+    logAttachmentUploaded(newAttachment, card, req.board, req.user._id);
+
     res.status(201).json({
       success: true,
       message: "Thêm attachment thành công",
@@ -86,6 +94,10 @@ module.exports.destroyAttachment = async (req, res, next) => {
 
     // Hard delete attachment
     await Attachment.findByIdAndDelete(attachment._id);
+
+    // Log activity
+    const card = req.card;
+    logAttachmentDeleted(attachment, card, req.board, req.user._id);
 
     res.status(200).json({
       success: true,
