@@ -1,5 +1,6 @@
 const Activity = require('../../models/Activity.model');
 const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require('../../constants/activities');
+const { emitToRoom } = require('../../utils/socketHelper');
 
 // Log activity vào database
 const logActivity = async ({
@@ -13,7 +14,7 @@ const logActivity = async ({
     metadata = {}
 }) => {
     try {
-        await Activity.create({
+        const activity = await Activity.create({
             action,
             entity_type: entityType,
             entity_id: entityId,
@@ -23,6 +24,12 @@ const logActivity = async ({
             changes,
             metadata
         });
+
+        // Populate actor
+        await activity.populate('actor', '_id full_name avatar.url');
+        broadcastActivity(activity);
+
+        return activity;
     } catch (error) {
         // Log error
         console.error('[Activity Logger] Failed to log activity:', {
@@ -34,8 +41,34 @@ const logActivity = async ({
     }
 };
 
-// Helper functions cho từng loại entity
+// Xử lý broadcast activity
+const broadcastActivity = (activity) => {
+    try {
+        const activityData = activity.toObject ? activity.toObject() : activity;
 
+        // Chỉ broadcast đến workspace room nếu workspace tồn tại   
+        if (activityData.workspace) {
+            emitToRoom({
+                room: `workspace:${activityData.workspace}`,
+                event: 'activity-created',
+                data: activityData
+            });
+        }
+
+        // Chỉ broadcast đến board room nếu board tồn tại
+        if (activityData.board) {
+            emitToRoom({
+                room: `board:${activityData.board}`,
+                event: 'activity-created',
+                data: activityData
+            });
+        }
+    } catch (error) {
+        console.error('[Activity Broadcast] Failed to broadcast activity:', error.message);
+    }
+};
+
+// Helper functions cho từng loại entity
 // Workspace activities
 const logWorkspaceCreated = (workspace, actor) => {
     return logActivity({

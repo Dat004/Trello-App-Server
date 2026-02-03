@@ -35,6 +35,18 @@ module.exports = {
                 console.log(`Socket ${socket.id} left board room: board:${boardId}`);
             });
 
+            // Join workspace room
+            socket.on("join-workspace", (workspaceId) => {
+                socket.join(`workspace:${workspaceId}`);
+                console.log(`Socket ${socket.id} joined workspace room: workspace:${workspaceId}`);
+            });
+
+            // Leave workspace room
+            socket.on("leave-workspace", (workspaceId) => {
+                socket.leave(`workspace:${workspaceId}`);
+                console.log(`Socket ${socket.id} left workspace room: workspace:${workspaceId}`);
+            });
+
             socket.on("disconnect", () => {
                 console.log("Client disconnected:", socket.id);
             });
