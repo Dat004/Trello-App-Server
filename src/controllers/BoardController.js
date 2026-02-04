@@ -9,6 +9,7 @@ const {
   inviteMemberSchema,
   updateBoardsSchema,
 } = require("../utils/validationSchemas");
+const { emitToRoom } = require("../utils/socketHelper");
 const {
   logBoardCreated,
   logBoardUpdated,
@@ -78,6 +79,16 @@ module.exports.create = async (req, res, next) => {
 
     // Log activity
     logBoardCreated(newBoard, req.user._id);
+
+    // Socket emit - if board belongs to workspace, notify workspace
+    if (newBoard.workspace) {
+      emitToRoom({
+        room: `workspace:${newBoard.workspace}`,
+        event: "board-created", // or workspace-updated if simple refresh needed
+        data: newBoard,
+        socketId: req.headers["x-socket-id"],
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -361,6 +372,24 @@ module.exports.updateBoard = async (req, res, next) => {
       logBoardUpdated(updatedBoard, req.user._id, changes);
     }
 
+    // Socket emit
+    emitToRoom({
+      room: `board:${updatedBoard._id}`,
+      event: "board-updated",
+      data: updatedBoard,
+      socketId: req.headers["x-socket-id"],
+    });
+
+    // Nếu board thuộc workspace và thay đổi title hoặc visibility
+    if (updatedBoard.workspace && (changes.title || changes.visibility)) {
+      emitToRoom({
+        room: `workspace:${updatedBoard.workspace}`,
+        event: "board-updated-in-workspace",
+        data: updatedBoard,
+        socketId: req.headers["x-socket-id"],
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Cập nhật board thành công",
@@ -380,6 +409,24 @@ module.exports.destroy = async (req, res, next) => {
 
     // Log activity
     logBoardDeleted(board, req.user._id);
+
+    // Socket emit - notify board members (redirect or show alert)
+    emitToRoom({
+      room: `board:${req.params.boardId}`,
+      event: "board-deleted",
+      data: req.params.boardId,
+      socketId: req.headers["x-socket-id"],
+    });
+
+    // Notify workspace if applicable
+    if (board.workspace) {
+      emitToRoom({
+        room: `workspace:${board.workspace}`,
+        event: "board-deleted",
+        data: req.params.boardId,
+        socketId: req.headers["x-socket-id"],
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -538,6 +585,14 @@ module.exports.kickMemberFromBoard = async (req, res, next) => {
       board: board._id,
       member,
       actor: req.user._id
+    });
+
+    // Socket emit
+    emitToRoom({
+      room: `board:${board._id}`,
+      event: "board-member-removed",
+      data: memberUserId,
+      socketId: req.headers["x-socket-id"],
     });
 
     res.status(200).json({

@@ -9,6 +9,7 @@ const {
   updateWorkspaceSchema,
   updatePermissionsSchema,
 } = require("../utils/validationSchemas");
+const { emitToRoom } = require("../utils/socketHelper");
 const {
   logWorkspaceCreated,
   logWorkspaceUpdated,
@@ -266,6 +267,14 @@ module.exports.updateWorkspace = async (req, res, next) => {
       logWorkspaceUpdated(updatedWorkspace, req.user._id, changes);
     }
 
+    // Socket emit
+    emitToRoom({
+      room: `workspace:${req.params.workspaceId}`,
+      event: "workspace-updated",
+      data: updatedWorkspace,
+      socketId: req.headers["x-socket-id"],
+    });
+
     const boardCount = await Board.countDocuments({
       workspace: req.params.workspaceId,
       deleted_at: null,
@@ -306,6 +315,14 @@ module.exports.delete = async (req, res, next) => {
 
     // Log activity
     logWorkspaceDeleted(workspace, user._id);
+
+    // Socket emit - notify workspace members that workspace is deleted
+    emitToRoom({
+      room: `workspace:${workspaceId}`,
+      event: "workspace-deleted",
+      data: workspaceId,
+      socketId: req.headers["x-socket-id"],
+    });
 
     return res.status(200).json({
       success: true,
@@ -353,6 +370,14 @@ module.exports.updatePermissions = async (req, res, next) => {
     if (Object.keys(changes).length > 0) {
       logPermissionChanged(oldWorkspace, req.user._id, changes);
     }
+
+    // Socket emit
+    emitToRoom({
+      room: `workspace:${req.params.workspaceId}`,
+      event: "workspace-permissions-updated",
+      data: updatedWorkspace.permissions,
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,
@@ -506,6 +531,14 @@ module.exports.updateMemberRole = async (req, res, next) => {
       actor: req.user._id
     });
 
+    // Socket emit
+    emitToRoom({
+      room: `workspace:${workspace._id}`,
+      event: "member-role-updated",
+      data: { member_id, role },
+      socketId: req.headers["x-socket-id"],
+    });
+
     // Trả về gọn nhẹ
     res.status(200).json({
       success: true,
@@ -575,6 +608,14 @@ exports.kickMember = async (req, res, next) => {
     });
 
     // Không cần trả về data mới, chỉ cần báo thành công
+    // Socket emit
+    emitToRoom({
+      room: `workspace:${workspace._id}`,
+      event: "member-removed",
+      data: member_id,
+      socketId: req.headers["x-socket-id"],
+    });
+
     res.status(200).json({
       success: true,
       message: "Xóa thành viên thành công",
@@ -740,6 +781,14 @@ exports.handleJoinRequest = async (req, res, next) => {
       // Tìm member vừa được thêm vào trong mảng đã populate
       const addedMember = populatedWorkspace.members.find(m => m.user._id.equals(targetUserId));
 
+      // Socket emit
+      emitToRoom({
+        room: `workspace:${workspace._id}`,
+        event: "member-joined",
+        data: populatedWorkspace.members,
+        socketId: req.headers["x-socket-id"],
+      });
+
       return res.status(200).json({
         success: true,
         message: "Đã chấp nhận yêu cầu tham gia",
@@ -802,9 +851,21 @@ exports.addBoardsToWorkspace = async (req, res, next) => {
       }
     );
 
-    if (!result.modifiedCount) {
-      return res.status(400).json({ success: false, message: "Không tìm thấy board nào trong workspace này" });
-    }
+    // 3. Fetch các board đã cập nhật để trả về cho FE
+    const updatedBoards = await Board.find({
+      _id: { $in: boardIds },
+      deleted_at: null
+    })
+      .populate("owner", "email full_name avatar.url")
+      .populate("members.user", "email full_name avatar.url");
+
+    // Socket emit
+    emitToRoom({
+      room: `workspace:${workspaceId}`,
+      event: "boards-added",
+      data: updatedBoards,
+      socketId: req.headers["x-socket-id"],
+    });
 
     // Log activity for each board moved
     const workspace = await Workspace.findById(workspaceId);
@@ -815,6 +876,7 @@ exports.addBoardsToWorkspace = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `Đã thêm ${boardIds.length} board vào workspace thành công`,
+      data: { boards: updatedBoards }
     });
   } catch (error) {
     next(error);
@@ -862,6 +924,14 @@ exports.removeBoardsFromWorkspace = async (req, res, next) => {
     for (const board of boards) {
       logBoardRemovedFromWorkspace(board, workspace, req.user._id);
     }
+
+    // Socket emit
+    emitToRoom({
+      room: `workspace:${workspaceId}`,
+      event: "boards-removed",
+      data: workspaceId,
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,
