@@ -181,6 +181,7 @@ const createBoardFromTemplateSchema = z.object({
 // Schema cho query activities
 const getActivitiesSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  skip: z.coerce.number().int().min(0).optional().default(0),
   page: z.coerce.number().int().min(1).optional().default(1),
   action: z.string().optional(),
 });
