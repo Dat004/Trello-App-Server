@@ -186,6 +186,15 @@ const getActivitiesSchema = z.object({
   action: z.string().optional(),
 });
 
+// Schema cho assign/remove card member
+const assignCardMemberSchema = z.object({
+  userId: objectJd,
+});
+
+const removeCardMemberSchema = z.object({
+  userId: objectJd,
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -203,4 +212,6 @@ module.exports = {
   attachmentInputSchema,
   createBoardFromTemplateSchema,
   getActivitiesSchema,
+  assignCardMemberSchema,
+  removeCardMemberSchema,
 };
