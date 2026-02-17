@@ -54,6 +54,58 @@ const BoardSchema = new mongoose.Schema({
     enum: ["private", "workspace", "public"],
     default: "workspace", // Mặc định khi trong workspace là workspace visibility
   },
+  invites: [
+    {
+      email: {
+        type: String,
+        required: true,
+        lowercase: true,
+      },
+      role: {
+        type: String,
+        enum: ["admin", "member", "viewer"],
+        default: "member",
+      },
+      invited_by: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+      invited_at: {
+        type: Date,
+        default: Date.now,
+      },
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "declined"],
+        default: "pending",
+      },
+    },
+  ],
+  join_requests: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+      message: {
+        type: String,
+        trim: true,
+        maxlength: [200, "Lời nhắn không quá 200 ký tự"],
+        default: "",
+      },
+      requested_at: {
+        type: Date,
+        default: Date.now,
+      },
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "declined"],
+        default: "pending",
+      },
+    },
+  ],
   archived: {
     type: Boolean,
     default: false,

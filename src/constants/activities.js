@@ -39,6 +39,8 @@ const ACTIVITY_ACTIONS = {
     CARD_MOVED: 'card_moved',
     CARD_ARCHIVED: 'card_archived',
     CARD_RESTORED: 'card_restored',
+    CARD_MEMBER_ASSIGNED: 'card_member_assigned',
+    CARD_MEMBER_REMOVED: 'card_member_removed',
 
     // Comment actions
     COMMENT_CREATED: 'comment_created',

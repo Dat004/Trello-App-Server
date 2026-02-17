@@ -562,6 +562,41 @@ const logAttachmentDeleted = (attachment, card, board, actor) => {
     });
 };
 
+// Card member activities
+const logCardMemberAssigned = (card, board, member, actor) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.CARD_MEMBER_ASSIGNED,
+        entityType: ENTITY_TYPES.CARD,
+        entityId: card._id,
+        workspace: card.workspace || null,
+        board: board._id,
+        actor,
+        metadata: {
+            card_title: card.title,
+            board_title: board.title,
+            member_id: member._id,
+            member_name: member.full_name || member.email
+        }
+    });
+};
+
+const logCardMemberRemoved = (card, board, member, actor) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.CARD_MEMBER_REMOVED,
+        entityType: ENTITY_TYPES.CARD,
+        entityId: card._id,
+        workspace: card.workspace || null,
+        board: board._id,
+        actor,
+        metadata: {
+            card_title: card.title,
+            board_title: board.title,
+            member_id: member._id,
+            member_name: member.full_name || member.email
+        }
+    });
+};
+
 module.exports = {
     logActivity,
 
@@ -602,6 +637,8 @@ module.exports = {
     logCardMoved,
     logCardArchived,
     logCardRestored,
+    logCardMemberAssigned,
+    logCardMemberRemoved,
 
     // Comment
     logCommentCreated,
