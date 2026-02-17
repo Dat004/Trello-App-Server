@@ -1,6 +1,3 @@
-/**
- * Constants for Permission Actions
- */
 const PERMISSIONS = {
     WORKSPACE: {
         VIEW: 'workspace:view',
@@ -42,9 +39,9 @@ const PERMISSIONS = {
         DELETE: 'comment:delete'
     },
     ATTACHMENT: {
-        CREATE: 'attachment:create', // Upload
+        CREATE: 'attachment:create',
         DELETE: 'attachment:delete',
-        UPDATE: 'attachment:update' // e.g., Rename
+        UPDATE: 'attachment:update'
     }
 };
 

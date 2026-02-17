@@ -67,7 +67,6 @@ module.exports.getBoardLists = async (req, res, next) => {
       message: "Lấy danh sách list thành công",
       data: { lists },
     });
-    0;
   } catch (error) {
     next(error);
   }

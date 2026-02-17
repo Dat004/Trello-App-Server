@@ -1,21 +1,12 @@
 const PERMISSIONS = require('./definitions');
-const mongoose = require('mongoose');
 
-/**
- * Define abilities for a user based on context
- * @param {Object} user - The user object (can be null for guests)
- * @param {Object} context - { workspace, board, card, comment, attachment }
- * @returns {Array<String>} List of allowed actions
- */
 const defineAbilitiesFor = (user, context = {}) => {
     const { workspace, board, comment, attachment } = context;
     const can = new Set();
     const userId = user ? user._id : null;
 
-    // Helper: Check if user is a workspace member
+    // Kiểm tra quyền thành viên workspace
     const isWsMember = (ws) => user && ws && ws.members && ws.members.some(m => m.user.equals(userId));
-
-    // Helper: Check if user is a workspace admin/owner
     const isWsAdminOrOwner = (ws) => {
         if (!user || !ws) return false;
         if (ws.owner.equals(userId)) return true;
@@ -23,21 +14,19 @@ const defineAbilitiesFor = (user, context = {}) => {
         return member && member.role === 'admin';
     };
 
-    // Helper: Check if user is a board member
+    // Kiểm tra quyền thành viên board
     const isBoardMember = (b) => user && b && b.members && b.members.some(m => m.user && m.user.equals(userId));
 
-    // =========================================================================
     // 1. WORKSPACE LEVEL PERMISSIONS
-    // =========================================================================
     if (workspace) {
         // --- VISIBILITY CHECK ---
         let canViewWorkspace = false;
 
-        // 1. Public Workspace: Anyone can view (even guests)
+        // 1. Public Workspace: Ai cũng có thể xem (kể cả khách)
         if (workspace.visibility === 'public') {
             canViewWorkspace = true;
         }
-        // 2. Private: Only members
+        // 2. Private: Chỉ thành viên
         else if (isWsMember(workspace)) {
             canViewWorkspace = true;
         }
@@ -48,15 +37,12 @@ const defineAbilitiesFor = (user, context = {}) => {
 
         // --- MEMBER ACTIONS ---
         if (user && isWsMember(workspace)) {
-            // Basic member rights
-            // Check permissions setting for Create Board
-            // NEW DEFAULT: Only Admin/Owner can create boards (to prevent membership inflation)
+            // Kiểm tra quyền tạo board
             if (workspace.permissions && workspace.permissions.canCreateBoard === 'admin_member') {
-                // If explicitly set to allow members
                 can.add(PERMISSIONS.WORKSPACE.CREATE_BOARD);
             }
 
-            // Check permissions setting for Invite
+            // Kiểm tra quyền mời thành viên
             if (!workspace.permissions || workspace.permissions.canInviteMember === 'any') {
                 can.add(PERMISSIONS.WORKSPACE.INVITE);
             }
@@ -66,8 +52,8 @@ const defineAbilitiesFor = (user, context = {}) => {
                 can.add(PERMISSIONS.WORKSPACE.EDIT);
                 can.add(PERMISSIONS.WORKSPACE.MANAGE_MEMBERS);
                 can.add(PERMISSIONS.WORKSPACE.MANAGE_ROLES);
-                can.add(PERMISSIONS.WORKSPACE.CREATE_BOARD); // Admin override
-                can.add(PERMISSIONS.WORKSPACE.INVITE);       // Admin override
+                can.add(PERMISSIONS.WORKSPACE.CREATE_BOARD);
+                can.add(PERMISSIONS.WORKSPACE.INVITE);
             }
 
             // --- OWNER ONLY ---
@@ -77,9 +63,7 @@ const defineAbilitiesFor = (user, context = {}) => {
         }
     }
 
-    // =========================================================================
     // 2. BOARD LEVEL PERMISSIONS
-    // =========================================================================
     if (board) {
         // --- VISIBILITY CHECK ---
         let canViewBoard = false;
@@ -88,22 +72,19 @@ const defineAbilitiesFor = (user, context = {}) => {
         if (board.visibility === 'public') {
             canViewBoard = true;
         }
-        // 2. Workspace Visibility (Members of the parent workspace)
+        // 2. Workspace Visibility (Thành viên của workspace)
         else if (board.visibility === 'workspace') {
-            // Check if user is member of the workspace this board belongs to
-            // Note: req.context.workspace might be populated, or we check board.workspace if populated
-            // Rely on 'workspace' passed in context which is reliable via loadContext
+            // Kiểm tra xem user có phải là thành viên của workspace này không
             if (workspace && isWsMember(workspace)) {
                 canViewBoard = true;
             }
         }
-        // 3. Private Board (Only Board Members)
+        // 3. Private Board (Chỉ thành viên)
         else { // private
             if (isBoardMember(board)) {
                 canViewBoard = true;
             }
-            // Edge case: Workspace Admin/Owner can typically see private boards in their workspace?
-            // Policies vary. Trello admins can see/close private boards.
+            // Workspace Admin/Owner có thể xem private board trong workspace của họ
             if (workspace && isWsAdminOrOwner(workspace)) {
                 canViewBoard = true;
             }
@@ -117,7 +98,7 @@ const defineAbilitiesFor = (user, context = {}) => {
         // --- INTERACTION PERMISSIONS (Authenticated Only) ---
         if (user && canViewBoard) {
 
-            // Determine "Effective Admin" for Board
+            // Xác định "Effective Admin" cho Board
             let isEffectiveAdmin = false;
 
             // 1. Board Admin
@@ -130,12 +111,7 @@ const defineAbilitiesFor = (user, context = {}) => {
             // 3. Workspace Admin/Owner (Inheritance)
             if (workspace && isWsAdminOrOwner(workspace)) isEffectiveAdmin = true;
 
-            // --- REGULAR MEMBERS ---
-            // Must be an explicit board member OR effective admin to edit content
-            // (Workspace members can VIEW 'workspace' visible boards, but must JOIN to edit? 
-            //  Trello logic: You must join to edit. But for simplicity, we might allow WS members to edit 'workspace' boards directly?
-            //  Let's stick to: "If you are a Board Member or Admin")
-
+            // Kiểm tra quyền thành viên hoặc admin
             const isMemberOrAdmin = (bMember || isEffectiveAdmin);
 
             if (isMemberOrAdmin) {
@@ -173,14 +149,11 @@ const defineAbilitiesFor = (user, context = {}) => {
                 can.add(PERMISSIONS.ATTACHMENT.UPDATE);
             }
 
-            // =========================================================================
             // 3. RESOURCE OWNERSHIP
-            // =========================================================================
             if (comment && comment.author && comment.author.equals(userId)) {
                 can.add(PERMISSIONS.COMMENT.UPDATE);
                 can.add(PERMISSIONS.COMMENT.DELETE);
             }
-            // (Similar logic for Attachments if needed)
         }
     }
 

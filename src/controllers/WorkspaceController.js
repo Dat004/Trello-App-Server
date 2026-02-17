@@ -1,7 +1,8 @@
+const WorkspaceMembershipService = require("../services/membership/workspace.service");
+const withTransaction = require('../services/common/withTransaction');
 const { deleteWorkspace } = require("../services/workspace/delete");
 const Workspace = require("../models/Workspace.model");
 const Board = require("../models/Board.model");
-const User = require("../models/User.model");
 const {
   kickMember,
   updateMemberRole,
@@ -14,12 +15,7 @@ const {
   logWorkspaceCreated,
   logWorkspaceUpdated,
   logWorkspaceDeleted,
-  logMemberAdded,
-  logMemberRemoved,
-  logMemberRoleChanged,
   logPermissionChanged,
-  logJoinRequestApproved,
-  logJoinRequestRejected,
   logBoardMovedToWorkspace,
   logBoardRemovedFromWorkspace,
 } = require("../services/activity/log");
@@ -163,8 +159,31 @@ module.exports.getWorkspaceById = async (req, res, next) => {
     );
     const isMember = isOwner || !!memberRecord;
 
-    // Nếu user chưa là member, chỉ trả về thông tin cơ bản
+    // Nếu user chưa là member
     if (!isMember) {
+      // Nếu là Public Workspace -> Xem Full (Read-only)
+      if (workspace.visibility === 'public') {
+        const boardCount = await Board.countDocuments({
+          workspace: workspaceId,
+          deleted_at: null,
+          $or: [{ visibility: 'public' }, { visibility: 'workspace' }] // Guest xem được public & workspace boards
+        });
+
+        const workspaceData = workspace.toObject();
+        workspaceData.board_count = boardCount;
+
+        return res.status(200).json({
+          success: true,
+          message: "Lấy chi tiết workspace thành công (Public Mode)",
+          data: {
+            workspace: workspaceData,
+            is_member: false,
+            read_only: true // Flag để FE disable nút sửa
+          },
+        });
+      }
+
+      // Nếu là Private -> Trả về Preview
       const pendingRequest = workspace.join_requests.find(
         (jr) => jr.user && jr.user._id.equals(req.user._id) && jr.status === "pending"
       );
@@ -177,6 +196,12 @@ module.exports.getWorkspaceById = async (req, res, next) => {
             _id: workspace._id,
             name: workspace.name,
             description: workspace.description,
+            visibility: workspace.visibility, // Thêm visibility
+            owner: {
+              _id: workspace.owner._id,
+              full_name: workspace.owner.full_name,
+              avatar: workspace.owner.avatar
+            }
           },
           is_member: false,
           has_pending_request: !!pendingRequest,
@@ -197,7 +222,10 @@ module.exports.getWorkspaceById = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Lấy chi tiết workspace thành công",
-      data: { workspace: workspaceData },
+      data: {
+        workspace: workspaceData,
+        is_member: true
+      },
     });
   } catch (error) {
     next(error);
@@ -266,6 +294,19 @@ module.exports.updateWorkspace = async (req, res, next) => {
     if (Object.keys(changes).length > 0) {
       logWorkspaceUpdated(updatedWorkspace, req.user._id, changes);
     }
+
+    await Workspace.populate(updatedWorkspace,
+      {
+        path: "members.user",
+        select: "_id full_name avatar.url email",
+      }
+    );
+    await Workspace.populate(updatedWorkspace,
+      {
+        path: "join_requests.user",
+        select: "_id full_name avatar.url email",
+      }
+    );
 
     // Socket emit
     emitToRoom({
@@ -375,7 +416,7 @@ module.exports.updatePermissions = async (req, res, next) => {
     emitToRoom({
       room: `workspace:${req.params.workspaceId}`,
       event: "workspace-permissions-updated",
-      data: updatedWorkspace.permissions,
+      data: { workspaceId: req.params.workspaceId, permissions: updatedWorkspace.permissions },
       socketId: req.headers["x-socket-id"],
     });
 
@@ -399,78 +440,22 @@ exports.inviteMember = async (req, res, next) => {
 
     const workspace = req.workspace;
 
-    // Kiểm tra email đã tồn tại trong hệ thống (có user)
-    const invitedUser = await User.findOne({ email: emailLower });
-    if (!invitedUser) {
-      return res.status(400).json({
-        success: false,
-        message: "Email này chưa được đăng ký. Không thể gửi lời mời.",
-      });
-    }
-
-    // Kiểm tra quyền mời thành viên theo permissions + role hiện tại
-    const isOwner = workspace.owner.toString() === req.user._id.toString();
-    const currentMember = workspace.members.find(
-      (m) => m.user.toString() === req.user._id.toString()
+    const updatedWorkspace = await WorkspaceMembershipService.inviteMember(
+      workspace,
+      req.user,
+      emailLower,
+      role
     );
-    const userRole = isOwner
-      ? "admin"
-      : currentMember
-        ? currentMember.role
-        : null;
-
-    const allowedInvite =
-      workspace.permissions.canInviteMember === "admin_member"
-        ? ["admin", "member"]
-        : ["admin"];
-
-    if (!isOwner && !allowedInvite.includes(userRole)) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền mời thành viên vào workspace này",
-      });
-    }
-
-    // Check trùng
-    const existingMember = workspace.members.find(
-      (m) => m.user.toString() === invitedUser._id.toString()
-    );
-    const existingInvite = workspace.invites.find(
-      (i) => i.email === emailLower && i.status === "pending"
-    );
-
-    if (existingMember || existingInvite) {
-      return res.status(400).json({
-        success: false,
-        message: "Người dùng này đã tham gia hoặc đã được mời",
-      });
-    }
-
-    // Check giới hạn
-    const pendingCount = workspace.invites.filter(
-      (i) => i.status === "pending"
-    ).length;
-    if (workspace.members.length + pendingCount >= workspace.max_members) {
-      return res.status(400).json({
-        success: false,
-        message: "Workspace đã đạt giới hạn thành viên",
-      });
-    }
-
-    workspace.invites.push({
-      email: emailLower,
-      role,
-      invited_by: req.user._id,
-    });
-
-    await workspace.save();
 
     res.status(200).json({
       success: true,
       message: "Gửi lời mời thành công",
-      data: { workspace },
+      data: { workspace: updatedWorkspace },
     });
   } catch (error) {
+    if (error.message.includes("không có quyền") || error.message.includes("giới hạn")) {
+      error.statusCode = 400;
+    }
     next(error);
   }
 };
@@ -480,66 +465,20 @@ module.exports.updateMemberRole = async (req, res, next) => {
     const { member_id, role } = updateMemberRole.parse(req.body);
     const workspace = req.workspace;
 
-    // Không cho phép cập nhật role owner
-    if (workspace.owner.toString() === member_id) {
-      const err = new Error("Không thể thay đổi role của owner workspace.");
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    const updatingMember = workspace.members.find(
-      (m) => m.user.toString() === member_id
+    await WorkspaceMembershipService.updateMemberRole(
+      workspace,
+      req.user,
+      member_id,
+      role
     );
 
-    const isTargetAdmin = updatingMember.role === "admin";
-    const isCurrentUserOwner =
-      workspace.owner.toString() === req.user._id.toString();
-
-    // Không cho phép Thăng / giáng cấp nếu cùng là admin
-    if (isTargetAdmin && !isCurrentUserOwner) {
-      const err = new Error(
-        "Chỉ owner mới có thể thay đổi role của admin khác."
-      );
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    const oldRole = updatingMember.role;
-
-    await Workspace.updateOne(
-      {
-        _id: req.params.workspaceId,
-        "members.user": member_id,
-      },
-      {
-        $set: {
-          "members.$.role": role,
-        },
-      }
-    );
-
-    // Log activity
-    const member = await User.findById(member_id);
-    logMemberRoleChanged({
-      entityType: 'workspace',
-      entityId: workspace._id,
-      workspace: workspace._id,
-      board: null,
-      member,
-      oldRole,
-      newRole: role,
-      actor: req.user._id
-    });
-
-    // Socket emit
     emitToRoom({
       room: `workspace:${workspace._id}`,
       event: "member-role-updated",
-      data: { member_id, role },
-      socketId: req.headers["x-socket-id"],
+      data: { workspaceId: workspace._id, memberId: member_id, role },
+      socketId: req.headers["x-socket-id"]
     });
 
-    // Trả về gọn nhẹ
     res.status(200).json({
       success: true,
       message: "Cập nhật role thành công",
@@ -554,66 +493,17 @@ exports.kickMember = async (req, res, next) => {
     const { member_id } = kickMember.parse(req.body);
     const workspace = req.workspace;
 
-    // Không cho kick owner
-    if (workspace.owner.toString() === member_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Không thể xóa owner khỏi workspace",
-      });
-    }
-
-    const memberIndex = workspace.members.findIndex(
-      (m) => m.user.toString() === member_id
+    await WorkspaceMembershipService.kickMember(
+      workspace,
+      req.user,
+      member_id
     );
 
-    if (memberIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: "Thành viên không tồn tại trong workspace",
-      });
-    }
-
-    const targetMember = workspace.members[memberIndex];
-    const isTargetAdmin = targetMember.role === "admin";
-    const isCurrentUserOwner =
-      workspace.owner.toString() === req.user._id.toString();
-
-    // Chỉ owner mới kick được admin
-    if (isTargetAdmin && !isCurrentUserOwner) {
-      return res.status(403).json({
-        success: false,
-        message: "Chỉ owner mới có thể xóa admin khỏi workspace",
-      });
-    }
-
-    // Xóa member
-    const result = await Workspace.updateOne(
-      { _id: req.params.workspaceId },
-      {
-        $pull: {
-          members: { user: member_id },
-        },
-      }
-    );
-
-    // Log activity
-    const member = await User.findById(member_id);
-    logMemberRemoved({
-      entityType: 'workspace',
-      entityId: workspace._id,
-      workspace: workspace._id,
-      board: null,
-      member,
-      actor: req.user._id
-    });
-
-    // Không cần trả về data mới, chỉ cần báo thành công
-    // Socket emit
     emitToRoom({
       room: `workspace:${workspace._id}`,
       event: "member-removed",
-      data: member_id,
-      socketId: req.headers["x-socket-id"],
+      data: { workspaceId: workspace._id, member_id, userId: member_id },
+      socketId: req.headers["x-socket-id"]
     });
 
     res.status(200).json({
@@ -671,6 +561,22 @@ exports.sendJoinRequest = async (req, res, next) => {
 
     await workspace.save();
 
+    // Populate user info for socket event
+    await workspace.populate({
+      path: "join_requests.user",
+      select: "_id full_name email avatar.url"
+    });
+
+    const newRequest = workspace.join_requests[workspace.join_requests.length - 1];
+
+    // Emit socket event to workspace admins
+    emitToRoom({
+      room: `workspace:${workspace._id}`,
+      event: "join-request-received",
+      data: { workspaceId: workspace._id, joinRequest: newRequest },
+      socketId: req.headers["x-socket-id"]
+    });
+
     res.status(200).json({
       success: true,
       message: "Gửi yêu cầu tham gia thành công",
@@ -706,100 +612,39 @@ exports.getJoinRequests = async (req, res, next) => {
 // Xử lý yêu cầu tham gia (Accept/Decline)
 exports.handleJoinRequest = async (req, res, next) => {
   try {
-    const { workspaceId, requestId } = req.params;
+    const { requestId } = req.params;
     const { status } = req.body; // 'accepted' hoặc 'declined'
 
     if (!["accepted", "declined"].includes(status)) {
       return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
     }
 
-    const workspace = await Workspace.findOne({ _id: workspaceId, deleted_at: null });
-    if (!workspace) {
-      return res.status(404).json({ success: false, message: "Workspace không tồn tại" });
-    }
-
-    // Tìm yêu cầu trong mảng join_requests
-    const request = workspace.join_requests.id(requestId);
-    if (!request) {
-      return res.status(404).json({ success: false, message: "Yêu cầu không tồn tại hoặc đã được xử lý" });
-    }
-
-    let newMember = null;
-    const targetUserId = request.user._id;
+    const workspace = req.workspace;
 
     if (status === "accepted") {
-      // Kiểm tra xem người này có VỪA MỚI trở thành member không
-      const isAlreadyMember = workspace.members.some(m => m.user.equals(targetUserId));
-      if (isAlreadyMember) {
-        // Nếu đã là member rồi thì chỉ cần xóa yêu cầu tham gia đi
-        workspace.join_requests.pull(requestId);
-        await workspace.save();
-        return res.status(400).json({ success: false, message: "Người dùng này đã là thành viên của workspace" });
-      }
+      const { member } = await WorkspaceMembershipService.approveJoinRequest(workspace, req.user, requestId);
 
-      // Kiểm tra giới hạn thành viên
-      if (workspace.members.length >= workspace.max_members) {
-        return res.status(400).json({ success: false, message: "Workspace đã đạt giới hạn thành viên" });
-      }
-
-      // Thêm vào mảng members
-      newMember = {
-        user: targetUserId,
-        role: "member",
-        joinedAt: new Date(),
-      };
-      workspace.members.push(newMember);
-
-      // Tìm email của user này để xóa trong mảng invites (nếu có)
-      const targetUser = await User.findById(targetUserId);
-      if (targetUser) {
-        workspace.invites = workspace.invites.filter(i => i.email !== targetUser.email);
-      }
-
-      // Log join request approved
-      logJoinRequestApproved(workspace, req.user._id, targetUser);
-    } else {
-      // Log join request rejected
-      const targetUser = await User.findById(targetUserId);
-      logJoinRequestRejected(workspace, req.user._id, targetUser);
-    }
-
-    // Xóa yêu cầu này khỏi danh sách chờ để dọn dẹp
-    workspace.join_requests.pull(requestId);
-
-    await workspace.save();
-
-    // Nếu đồng ý, ta cần populate thông tin user cho member mới để trả về cho FE
-    if (status === "accepted" && newMember) {
-      // Lấy member mới nhất từ mảng members (để có đầy đủ logic ID của mongoose nếu cần)
-      // Hoặc đơn giản là dùng bản object vừa tạo và populate nó
-      const populatedWorkspace = await Workspace.populate(workspace, {
-        path: "members.user",
-        select: "_id full_name avatar.url email",
-      });
-
-      // Tìm member vừa được thêm vào trong mảng đã populate
-      const addedMember = populatedWorkspace.members.find(m => m.user._id.equals(targetUserId));
-
-      // Socket emit
       emitToRoom({
         room: `workspace:${workspace._id}`,
         event: "member-joined",
-        data: populatedWorkspace.members,
-        socketId: req.headers["x-socket-id"],
+        data: { workspaceId: workspace._id, member },
+        socketId: req.headers["x-socket-id"]
       });
 
       return res.status(200).json({
         success: true,
         message: "Đã chấp nhận yêu cầu tham gia",
-        data: { member: addedMember }
+        data: { member }
+      });
+
+    } else {
+      await WorkspaceMembershipService.rejectJoinRequest(workspace, req.user, requestId);
+
+      return res.status(200).json({
+        success: true,
+        message: "Đã từ chối yêu cầu tham gia",
       });
     }
-
-    res.status(200).json({
-      success: true,
-      message: "Đã từ chối yêu cầu tham gia",
-    });
   } catch (error) {
     next(error);
   }
@@ -814,6 +659,15 @@ exports.addBoardsToWorkspace = async (req, res, next) => {
 
     if (!Array.isArray(boardIds) || boardIds.length === 0) {
       return res.status(400).json({ success: false, message: "Danh sách boardIds không hợp lệ" });
+    }
+
+    // RATE LIMITING: Giới hạn số lượng boards có thể thêm cùng lúc
+    const MAX_BOARDS_PER_REQUEST = 10;
+    if (boardIds.length > MAX_BOARDS_PER_REQUEST) {
+      return res.status(400).json({
+        success: false,
+        message: `Chỉ có thể thêm tối đa ${MAX_BOARDS_PER_REQUEST} board cùng lúc`
+      });
     }
 
     // 1. Kiểm tra quyền Admin/Owner trên các board này TRƯỚC khi cập nhật
@@ -840,18 +694,52 @@ exports.addBoardsToWorkspace = async (req, res, next) => {
       });
     }
 
-    // 2. Cập nhật workspace và chuyển visibility sang 'workspace'
-    const result = await Board.updateMany(
-      { _id: { $in: boardIds } },
-      {
-        $set: {
-          workspace: workspaceId,
-          visibility: "workspace"
+    // 2. Migrate board members to workspace với transaction
+    const migrationResult = await withTransaction(async (session) => {
+      const workspace = await Workspace.findById(workspaceId).session(session);
+
+      // Collect all unique member IDs from boards
+      const existingMemberIds = new Set(workspace.members.map(m => m.user.toString()));
+      const newMembers = [];
+
+      for (const board of boards) {
+        for (const boardMember of board.members) {
+          const memberIdStr = boardMember.user.toString();
+
+          if (!existingMemberIds.has(memberIdStr)) {
+            newMembers.push({
+              user: boardMember.user,
+              role: 'member',
+              joinedAt: new Date()
+            });
+            existingMemberIds.add(memberIdStr); // Prevent duplicates within this batch
+          }
         }
       }
-    );
 
-    // 3. Fetch các board đã cập nhật để trả về cho FE
+      if (newMembers.length > 0) {
+        workspace.members.push(...newMembers);
+        await workspace.save({ session });
+      }
+
+      // 3. Cập nhật workspace và chuyển visibility sang 'workspace'
+      await Board.updateMany(
+        { _id: { $in: boardIds } },
+        {
+          $set: {
+            workspace: workspaceId,
+            visibility: "workspace"
+          }
+        },
+        { session }
+      );
+
+      return { membersAdded: newMembers.length, workspace };
+    });
+
+    console.log(`[addBoardsToWorkspace] Auto-added ${migrationResult.membersAdded} members to workspace`);
+
+    // 4. Fetch các board đã cập nhật để trả về cho FE
     const updatedBoards = await Board.find({
       _id: { $in: boardIds },
       deleted_at: null
@@ -863,14 +751,13 @@ exports.addBoardsToWorkspace = async (req, res, next) => {
     emitToRoom({
       room: `workspace:${workspaceId}`,
       event: "boards-added",
-      data: updatedBoards,
+      data: { workspaceId, boards: updatedBoards },
       socketId: req.headers["x-socket-id"],
     });
 
     // Log activity for each board moved
-    const workspace = await Workspace.findById(workspaceId);
     for (const board of boards) {
-      logBoardMovedToWorkspace(board, workspace, userId);
+      logBoardMovedToWorkspace(board, migrationResult.workspace, userId);
     }
 
     res.status(200).json({
@@ -929,7 +816,7 @@ exports.removeBoardsFromWorkspace = async (req, res, next) => {
     emitToRoom({
       room: `workspace:${workspaceId}`,
       event: "boards-removed",
-      data: workspaceId,
+      data: { workspaceId, boardIds },
       socketId: req.headers["x-socket-id"],
     });
 
