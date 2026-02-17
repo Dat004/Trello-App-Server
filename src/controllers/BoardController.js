@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+const BoardMembershipService = require("../services/membership/board.service");
 const { deleteBoard } = require("../services/board/delete");
 const Workspace = require("../models/Workspace.model");
 const Board = require("../models/Board.model");
@@ -28,7 +29,7 @@ module.exports.create = async (req, res, next) => {
       title,
       description: description || "",
       color: color || "bg-blue-500",
-      visibility: visibility || (workspaceId ? "workspace" : "private"),
+      visibility: workspaceId ? "workspace" : (visibility || "private"),
       owner: req.user._id,
       members: [{ user: req.user._id, role: "admin" }],
     };
@@ -103,21 +104,54 @@ module.exports.create = async (req, res, next) => {
 module.exports.getMyBoards = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const boards = await Board.find({
+
+    // 1. Lấy tất cả workspace mà user là member hoặc owner
+    const userWorkspaces = await Workspace.find({
       $or: [
         { owner: userId },
-        { workspace: null, "members.user": userId }, // personal board được invite
+        { "members.user": userId }
+      ],
+      deleted_at: null
+    }).select('_id');
+
+    const workspaceIds = userWorkspaces.map(ws => ws._id);
+
+    // 2. Query boards với workspace membership check
+    const boards = await Board.find({
+      $or: [
+        // Board user là owner
+        { owner: userId },
+
+        // Personal board (không có workspace) mà user là member
+        { workspace: null, "members.user": userId },
+
+        // Workspace board mà user là board member
         {
-          workspace: { $exists: true },
-          $or: [
-            // workspace board
-            { visibility: "workspace" }, // tất cả member workspace thấy
-            { "members.user": userId }, // hoặc được invite riêng
-          ],
+          workspace: { $exists: true, $ne: null },
+          "members.user": userId
         },
+
+        // Workspace board với visibility="workspace" VÀ user là workspace member
+        {
+          workspace: { $in: workspaceIds },
+          visibility: "workspace"
+        }
       ],
       deleted_at: null,
     }).sort({ updated_at: -1 });
+
+    await Board.populate(boards,
+      {
+        path: "members.user",
+        select: "_id full_name avatar.url email",
+      }
+    );
+    await Board.populate(boards,
+      {
+        path: "join_requests.user",
+        select: "_id full_name avatar.url email",
+      }
+    );
 
     res.status(200).json({
       success: true,
@@ -171,6 +205,70 @@ module.exports.getBoardById = async (req, res, next) => {
       return next(error);
     }
 
+    // Lấy board và populate thông tin
+    const board = await Board.findOne({
+      _id: boardId,
+      deleted_at: null,
+    })
+      .populate("members.user", "_id full_name avatar.url email")
+      .populate("join_requests.user", "_id full_name avatar.url email");
+
+    if (!board) {
+      const error = new Error("Board không tồn tại");
+      error.statusCode = 404;
+      return next(error);
+    }
+
+    // Kiểm tra membership status của user hiện tại
+    const isOwner = board.owner.equals(req.user._id);
+    const isBoardMember = board.members.some((m) =>
+      m.user && m.user._id.equals(req.user._id)
+    );
+
+    // Check workspace membership if board belongs to workspace
+    let isWorkspaceMember = false;
+    if (board.workspace && board.visibility === "workspace") {
+      const workspace = await Workspace.findById(board.workspace);
+      if (workspace) {
+        isWorkspaceMember = workspace.members.some((m) =>
+          m.user.equals(req.user._id)
+        ) || workspace.owner.equals(req.user._id);
+      }
+    }
+
+    const hasAccess = isOwner || isBoardMember || isWorkspaceMember || board.visibility === 'public';
+
+    // Nếu user không có quyền truy cập, chỉ trả về thông tin cơ bản
+    if (!hasAccess) {
+      const pendingRequest = board.join_requests.find(
+        (jr) => jr.user && jr.user._id.equals(req.user._id) && jr.status === "pending"
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Lấy thông tin board thành công",
+        data: {
+          board: {
+            _id: board._id,
+            title: board.title,
+            description: board.description,
+            visibility: board.visibility,
+            workspace: board.workspace, // Thêm workspace info
+            owner: {
+              _id: board.owner._id,
+              full_name: board.owner.full_name,
+              avatar: board.owner.avatar
+            }
+          },
+          is_member: false,
+          has_pending_request: !!pendingRequest,
+          requested_at: pendingRequest ? pendingRequest.requested_at : null,
+          redirect_workspace_id: (board.visibility === 'workspace' && board.workspace) ? board.workspace : null, // Redirect logic
+        },
+      });
+    }
+
+    // User có quyền truy cập, load full data với lists và cards
     const boards = await Board.aggregate([
       {
         $match: {
@@ -187,10 +285,10 @@ module.exports.getBoardById = async (req, res, next) => {
             {
               $match: {
                 $expr: { $eq: ["$board", "$$boardId"] },
-                deleted_at: null, // Lọc soft delete
+                deleted_at: null,
               },
             },
-            { $sort: { pos: 1 } }, // Sắp xếp theo pos tăng dần
+            { $sort: { pos: 1 } },
           ],
           as: "lists",
         },
@@ -244,6 +342,15 @@ module.exports.getBoardById = async (req, res, next) => {
             },
 
             {
+              $lookup: {
+                from: "users",
+                localField: "members",
+                foreignField: "_id",
+                as: "members"
+              }
+            },
+
+            {
               $addFields: {
                 comment_count: {
                   $ifNull: [
@@ -257,6 +364,18 @@ module.exports.getBoardById = async (req, res, next) => {
                     0,
                   ],
                 },
+                members: {
+                  $map: {
+                    input: "$members",
+                    as: "member",
+                    in: {
+                      _id: "$$member._id",
+                      full_name: "$$member.full_name",
+                      email: "$$member.email",
+                      avatar: "$$member.avatar"
+                    }
+                  }
+                }
               },
             },
 
@@ -281,7 +400,6 @@ module.exports.getBoardById = async (req, res, next) => {
                 $mergeObjects: [
                   "$$list",
                   {
-                    // Lọc mảng cards lớn để lấy cards thuộc về list này
                     cards: {
                       $filter: {
                         input: "$cards",
@@ -296,31 +414,45 @@ module.exports.getBoardById = async (req, res, next) => {
           },
         },
       },
-      // Xóa trường cards
       {
         $unset: "cards",
       },
     ]);
 
-    // 2. Lấy phần tử đầu tiên của mảng kết quả
-    const board = boards[0];
+    const fullBoard = boards[0];
 
-    if (!board) {
+    if (!fullBoard) {
       return res.status(404).json({
         success: false,
         message: "Board không tồn tại hoặc đã bị xóa",
       });
     }
 
-    await Board.populate(board, {
-      path: "members.user",
-      select: "_id email full_name avatar.url",
-    });
+    await Board.populate(fullBoard, [
+      {
+        path: "members.user",
+        select: "_id email full_name avatar.url",
+      },
+      {
+        path: "join_requests.user",
+        select: "_id full_name email avatar.url",
+      },
+    ]);
+
+    // isMember chỉ tính Board Member hoặc Owner (người có quyền Edit)
+    const isMember = isOwner || isBoardMember;
+
+    // Read-only nếu không phải là member thực sự của board
+    // (Workspace member vẫn xem được nhưng read-only cho đến khi join)
 
     res.status(200).json({
       success: true,
       message: "Lấy chi tiết board thành công",
-      data: { board },
+      data: {
+        board: fullBoard,
+        is_member: isMember,
+        read_only: !isMember
+      },
     });
   } catch (error) {
     next(error);
@@ -403,9 +535,17 @@ module.exports.updateBoard = async (req, res, next) => {
 // Xóa board
 module.exports.destroy = async (req, res, next) => {
   try {
-    const board = req.board;
+    const board = await Board.findOne({
+      _id: req.params.boardId,
+      deleted_at: null,
+    });
 
-    await deleteBoard(req.params.boardId, { actor: req.user._id });
+    if (!board) {
+      return res.status(404).json({
+        success: false,
+        message: "Board không tồn tại",
+      });
+    }
 
     // Log activity
     logBoardDeleted(board, req.user._id);
@@ -420,6 +560,7 @@ module.exports.destroy = async (req, res, next) => {
 
     // Notify workspace if applicable
     if (board.workspace) {
+      console.log(`workspace:${board.workspace}`);
       emitToRoom({
         room: `workspace:${board.workspace}`,
         event: "board-deleted",
@@ -427,6 +568,8 @@ module.exports.destroy = async (req, res, next) => {
         socketId: req.headers["x-socket-id"],
       });
     }
+
+    await deleteBoard(req.params.boardId, { actor: req.user._id });
 
     res.status(200).json({
       success: true,
@@ -503,48 +646,17 @@ module.exports.inviteMemberToBoard = async (req, res, next) => {
     const { email, role } = inviteMemberSchema.parse(req.body);
     const board = req.board;
 
-    // Kiểm tra email đã tồn tại trong hệ thống
-    const invitedUser = await User.findOne({ email: email });
-    if (!invitedUser) {
-      const err = new Error(
-        "Email này chưa được đăng ký tài khoản. Không thể mời."
-      );
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    // Check trùng trong board.members
-    const existingMember = board.members.find(
-      (m) => m.user.toString() === invitedUser._id.toString()
+    const { board: updatedBoard } = await BoardMembershipService.inviteMember(
+      board,
+      req.user,
+      email,
+      role
     );
-    if (existingMember) {
-      const err = new Error("Người dùng này đã là thành viên board");
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    board.members.push({
-      user: invitedUser._id,
-      role,
-    });
-
-    await board.save();
-
-    // // Log activity
-    // logMemberAdded({
-    //   entityType: 'board',
-    //   entityId: board._id,
-    //   workspace: board.workspace || null,
-    //   board: board._id,
-    //   member: invitedUser,
-    //   role,
-    //   actor: req.user._id
-    // });
 
     res.status(200).json({
       success: true,
       message: "Mời thành viên vào board thành công",
-      data: { board },
+      data: { board: updatedBoard },
     });
   } catch (error) {
     next(error);
@@ -554,51 +666,163 @@ module.exports.inviteMemberToBoard = async (req, res, next) => {
 // Kick member khỏi board
 module.exports.kickMemberFromBoard = async (req, res, next) => {
   try {
-    const { memberUserId } = req.body;
+    const { member_id } = req.body;
     const board = req.board;
 
-    // Không cho kick owner
-    if (board.owner.toString() === memberUserId) {
-      const err = new Error("Không thể kick owner khỏi board");
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    const memberIndex = board.members.findIndex(
-      (m) => m.user.toString() === memberUserId
+    await BoardMembershipService.kickMember(
+      board,
+      req.user,
+      member_id
     );
-    if (memberIndex === -1) {
-      const err = new Error("Thành viên không tồn tại trong board");
-      err.statusCode = 404;
-      return next(err);
-    }
-
-    board.members.splice(memberIndex, 1);
-    await board.save();
-
-    // Log activity
-    const member = await User.findById(memberUserId);
-    logMemberRemoved({
-      entityType: 'board',
-      entityId: board._id,
-      workspace: board.workspace || null,
-      board: board._id,
-      member,
-      actor: req.user._id
-    });
-
-    // Socket emit
-    emitToRoom({
-      room: `board:${board._id}`,
-      event: "board-member-removed",
-      data: memberUserId,
-      socketId: req.headers["x-socket-id"],
-    });
 
     res.status(200).json({
       success: true,
       message: "Kick thành viên khỏi board thành công",
-      data: { board },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [POST] /api/boards/:boardId/join-requests/:requestId/respond
+module.exports.handleJoinRequest = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { status } = req.body; // 'accepted' hoặc 'declined'
+
+    if (!["accepted", "declined"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
+    }
+
+    const board = req.board;
+
+    if (status === "accepted") {
+      const { member } = await BoardMembershipService.approveJoinRequest(board, req.user, requestId);
+
+      return res.status(200).json({
+        success: true,
+        message: "Đã chấp nhận yêu cầu tham gia",
+        data: { member }
+      });
+
+    } else {
+      await BoardMembershipService.rejectJoinRequest(board, req.user, requestId);
+
+      return res.status(200).json({
+        success: true,
+        message: "Đã từ chối yêu cầu tham gia",
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [PATCH] /api/boards/:boardId/members/role
+module.exports.updateMemberRole = async (req, res, next) => {
+  try {
+    const { member_id, role } = req.body;
+
+    if (!["admin", "member", "viewer"].includes(role)) {
+      return res.status(400).json({ success: false, message: "Role không hợp lệ" });
+    }
+
+    const board = req.board;
+
+    const result = await BoardMembershipService.updateMemberRole(
+      board,
+      req.user,
+      member_id,
+      role
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật role thành công",
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [POST] /api/boards/:boardId/join
+module.exports.sendJoinRequest = async (req, res, next) => {
+  try {
+    const { boardId } = req.params;
+    const { message } = req.body;
+
+    const board = await Board.findOne({ _id: boardId, deleted_at: null });
+
+    if (!board) {
+      return res.status(404).json({ success: false, message: "Board không tồn tại" });
+    }
+
+    // Check if already a member
+    const isAlreadyMember = board.members.some(m => m.user.equals(req.user._id)) ||
+      board.owner.equals(req.user._id);
+    if (isAlreadyMember) {
+      return res.status(400).json({ success: false, message: "Bạn đã là thành viên của board này" });
+    }
+
+    // Check if already has pending request
+    const existingRequest = board.join_requests.find(
+      jr => jr.user.equals(req.user._id) && jr.status === "pending"
+    );
+    if (existingRequest) {
+      return res.status(400).json({ success: false, message: "Bạn đã gửi yêu cầu tham gia trước đó" });
+    }
+
+    board.join_requests.push({
+      user: req.user._id,
+      message: message || "",
+      requested_at: new Date(),
+      status: "pending"
+    });
+
+    await board.save();
+
+    // Populate user info for socket event
+    await board.populate({
+      path: "join_requests.user",
+      select: "_id full_name email avatar.url"
+    });
+
+    const newRequest = board.join_requests[board.join_requests.length - 1];
+
+    // Emit socket event to board admins
+    emitToRoom({
+      room: `board:${board._id}`,
+      event: "join-request-received",
+      data: newRequest,
+      socketId: req.headers["x-socket-id"]
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Gửi yêu cầu tham gia thành công",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [GET] /api/boards/:boardId/join
+module.exports.getJoinRequests = async (req, res, next) => {
+  try {
+    const board = req.board;
+
+    await board.populate({
+      path: "join_requests.user",
+      select: "_id full_name email avatar.url"
+    });
+
+    const pendingRequests = board.join_requests.filter(jr => jr.status === "pending");
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy danh sách yêu cầu tham gia thành công",
+      data: { requests: pendingRequests }
     });
   } catch (error) {
     next(error);

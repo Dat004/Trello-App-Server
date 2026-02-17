@@ -34,6 +34,10 @@ module.exports.getCardById = async (req, res, next) => {
       _id: req.params.cardId,
       deleted_at: null,
     })
+      .populate({
+        path: "members",
+        select: "_id full_name email avatar.url"
+      });
 
     if (!card) {
       const err = new Error("Card không tồn tại");
@@ -375,6 +379,165 @@ module.exports.moveCard = async (req, res, next) => {
     next(error);
   }
 };
+
+module.exports.assignMember = async (req, res, next) => {
+    try {
+        const { assignCardMemberSchema } = require("../utils/validationSchemas");
+        const { userId } = assignCardMemberSchema.parse(req.body);
+        const { cardId, boardId } = req.params;
+        const User = require("../models/User.model");
+        const Board = require("../models/Board.model");
+        const { logCardMemberAssigned } = require("../services/activity/log");
+
+        // Lấy card hiện tại
+        const card = await Card.findOne({ _id: cardId, deleted_at: null });
+        if (!card) {
+            const err = new Error("Card không tồn tại");
+            err.statusCode = 404;
+            return next(err);
+        }
+
+        // Kiểm tra user có tồn tại không
+        const user = await User.findById(userId);
+        if (!user) {
+            const err = new Error("User không tồn tại");
+            err.statusCode = 404;
+            return next(err);
+        }
+
+        // Kiểm tra user có phải là board member không
+        const board = req.board;
+        const isBoardMember = board.members.some(m => m.user.equals(userId)) ||
+            board.owner.equals(userId);
+
+        if (!isBoardMember) {
+            const err = new Error("Chỉ có thể giao thẻ cho thành viên của board");
+            err.statusCode = 403;
+            return next(err);
+        }
+
+        // Kiểm tra user đã được assign chưa
+        if (card.members.some(memberId => memberId.equals(userId))) {
+            const err = new Error("User đã được giao thẻ này rồi");
+            err.statusCode = 400;
+            return next(err);
+        }
+
+        // Assign member vào card
+        card.members.push(userId);
+        await card.save();
+
+        // Populate member info
+        await card.populate({
+            path: "members",
+            select: "_id full_name email avatar.url"
+        });
+
+        // Socket.io emit
+        emitToRoom({
+            room: `board:${boardId}`,
+            event: "card-member-assigned",
+            data: {
+                cardId: card._id,
+                member: card.members[card.members.length - 1]
+            },
+            socketId: req.headers["x-socket-id"],
+        });
+
+        // Log activity
+        logCardMemberAssigned(card, board, user, req.user._id);
+
+        res.status(200).json({
+            success: true,
+            message: "Giao thẻ cho thành viên thành công",
+            data: {
+                cardId: card._id,
+                member: card.members[card.members.length - 1]
+            },
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports.removeMember = async (req, res, next) => {
+    try {
+        const { cardId, boardId, userId } = req.params;
+        const User = require("../models/User.model");
+        const { logCardMemberRemoved } = require("../services/activity/log");
+
+        // Lấy card hiện tại
+        const card = await Card.findOne({ _id: cardId, deleted_at: null });
+        if (!card) {
+            const err = new Error("Card không tồn tại");
+            err.statusCode = 404;
+            return next(err);
+        }
+
+        // Kiểm tra user có trong card members không
+        if (!card.members.some(memberId => memberId.equals(userId))) {
+            const err = new Error("User không có trong thẻ này");
+            err.statusCode = 400;
+            return next(err);
+        }
+
+        // Lấy user info trước khi remove (để log)
+        const user = await User.findById(userId);
+
+        // Remove member khỏi card
+        card.members = card.members.filter(memberId => !memberId.equals(userId));
+        await card.save();
+
+        // Socket.io emit
+        emitToRoom({
+            room: `board:${boardId}`,
+            event: "card-member-removed",
+            data: {
+                cardId: card._id,
+                userId
+            },
+            socketId: req.headers["x-socket-id"],
+        });
+
+        // Log activity
+        if (user) {
+            logCardMemberRemoved(card, req.board, user, req.user._id);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Gỡ thành viên khỏi thẻ thành công",
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports.getCardMembers = async (req, res, next) => {
+    try {
+        const { cardId } = req.params;
+
+        const card = await Card.findOne({ _id: cardId, deleted_at: null })
+            .populate({
+                path: "members",
+                select: "_id full_name email avatar.url"
+            });
+
+        if (!card) {
+            const err = new Error("Card không tồn tại");
+            err.statusCode = 404;
+            return next(err);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Lấy danh sách thành viên của thẻ thành công",
+            data: { members: card.members },
+        });
+    } catch (err) {
+        next(err);
+    }
+}
 
 module.exports.addChecklistItem = async (req, res, next) => {
   try {
