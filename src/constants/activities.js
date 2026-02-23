@@ -50,6 +50,12 @@ const ACTIVITY_ACTIONS = {
     // Attachment actions
     ATTACHMENT_UPLOADED: 'attachment_uploaded',
     ATTACHMENT_DELETED: 'attachment_deleted',
+    // Checklist actions
+    CHECKLIST_ITEM_ADDED: 'checklist_item_added',
+    CHECKLIST_ITEM_COMPLETED: 'checklist_item_completed',
+
+    // Member actions
+    MEMBER_INVITED: 'member_invited',
 };
 
 // Entity types
