@@ -10,6 +10,7 @@ const cardRouter = require('./card');
 const listRouter = require('./list');
 const authRouter = require('./auth');
 const meRouter = require('./users');
+const notificationRouter = require('./notifications');
 
 function router(app) {
     // Attachment card routes
@@ -20,6 +21,9 @@ function router(app) {
 
     // Card list board routes
     app.use('/api/boards/:boardId/lists/:listId/cards', cardRouter)
+
+    // Notification routes
+    app.use('/api/notifications', notificationRouter);
 
     // List board routes
     app.use('/api/boards/:boardId/lists', listRouter);
