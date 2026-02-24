@@ -1,6 +1,7 @@
 const Workspace = require("../../models/Workspace.model");
 const Board = require("../../models/Board.model");
 const User = require("../../models/User.model");
+const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require("../../constants/activities");
 
 const withTransaction = require('../common/withTransaction');
 const {
@@ -9,6 +10,7 @@ const {
     logJoinRequestApproved,
     logJoinRequestRejected
 } = require("../activity/log");
+const { generateNotificationsForActivity } = require("../notification/create");
 
 // Invite a user to the workspace
 const inviteMember = async (workspace, user, email, role) => {
@@ -45,6 +47,20 @@ const inviteMember = async (workspace, user, email, role) => {
 
     await workspace.save();
     await workspace.populate('members.user', 'full_name email avatar');
+
+    // Gửi thông báo
+    generateNotificationsForActivity({
+        action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+        entity_type: ENTITY_TYPES.WORKSPACE,
+        entity_id: workspace._id,
+        workspace: workspace._id,
+        board: null,
+        actor: { _id: user._id },
+        metadata: {
+            member_id: invitedUser._id,
+            workspace_title: workspace.title
+        }
+    }).catch(err => console.error('[Notification] Failed to send invite notify:', err));
 
     return workspace;
 };
