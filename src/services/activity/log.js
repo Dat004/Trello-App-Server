@@ -1,6 +1,7 @@
 const Activity = require('../../models/Activity.model');
 const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require('../../constants/activities');
 const { emitToRoom } = require('../../utils/socketHelper');
+const { generateNotificationsForActivity } = require('../../services/notification/create');
 
 // Log activity vào database
 const logActivity = async ({
@@ -25,9 +26,18 @@ const logActivity = async ({
             metadata
         });
 
-        // Populate actor
-        await activity.populate('actor', '_id full_name avatar.url');
-        broadcastActivity(activity);
+        if (activity) {
+            // Populate actor
+            await activity.populate('actor', '_id full_name avatar.url');
+            broadcastActivity(activity);
+
+            // Trigger notification generation (async, non-blocking)
+            setImmediate(() => {
+                generateNotificationsForActivity(activity).catch(err =>
+                    console.error('[Notification Trigger] Failed:', err)
+                );
+            });
+        }
 
         return activity;
     } catch (error) {
@@ -305,6 +315,38 @@ const logJoinRequestRejected = (workspace, actor, requestUser) => {
         metadata: {
             request_user_id: requestUser._id,
             request_user_name: requestUser.full_name || requestUser.email
+        }
+    });
+};
+
+const logBoardJoinRequestApproved = (board, actor, requestUser) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.JOIN_REQUEST_APPROVED,
+        entityType: ENTITY_TYPES.BOARD,
+        entityId: board._id,
+        workspace: board.workspace || null,
+        board: board._id,
+        actor,
+        metadata: {
+            request_user_id: requestUser._id,
+            request_user_name: requestUser.full_name || requestUser.email,
+            board_title: board.title
+        }
+    });
+};
+
+const logBoardJoinRequestRejected = (board, actor, requestUser) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.JOIN_REQUEST_REJECTED,
+        entityType: ENTITY_TYPES.BOARD,
+        entityId: board._id,
+        workspace: board.workspace || null,
+        board: board._id,
+        actor,
+        metadata: {
+            request_user_id: requestUser._id,
+            request_user_name: requestUser.full_name || requestUser.email,
+            board_title: board.title
         }
     });
 };
@@ -597,6 +639,38 @@ const logCardMemberRemoved = (card, board, member, actor) => {
     });
 };
 
+const logChecklistItemAdded = (card, board, actor, itemText) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.CHECKLIST_ITEM_ADDED,
+        entityType: ENTITY_TYPES.CARD,
+        entityId: card._id,
+        workspace: card.workspace || board.workspace,
+        board: board._id,
+        actor,
+        metadata: {
+            card_id: card._id,
+            card_title: card.title,
+            checklist_text: itemText
+        }
+    });
+};
+
+const logChecklistItemCompleted = (card, board, actor, itemText) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.CHECKLIST_ITEM_COMPLETED,
+        entityType: ENTITY_TYPES.CARD,
+        entityId: card._id,
+        workspace: card.workspace || board.workspace,
+        board: board._id,
+        actor,
+        metadata: {
+            card_id: card._id,
+            card_title: card.title,
+            checklist_text: itemText
+        }
+    });
+};
+
 module.exports = {
     logActivity,
 
@@ -623,6 +697,8 @@ module.exports = {
     logPermissionChanged,
     logJoinRequestApproved,
     logJoinRequestRejected,
+    logBoardJoinRequestApproved,
+    logBoardJoinRequestRejected,
 
     // List
     logListCreated,
@@ -639,6 +715,10 @@ module.exports = {
     logCardRestored,
     logCardMemberAssigned,
     logCardMemberRemoved,
+
+    // Checklist
+    logChecklistItemAdded,
+    logChecklistItemCompleted,
 
     // Comment
     logCommentCreated,

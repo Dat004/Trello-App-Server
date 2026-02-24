@@ -1,6 +1,7 @@
 const User = require("../../models/User.model");
 const Workspace = require("../../models/Workspace.model");
 const Board = require("../../models/Board.model");
+const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require("../../constants/activities");
 
 const { emitToRoom } = require("../../utils/socketHelper");
 const {
@@ -8,8 +9,11 @@ const {
     logMemberRemoved,
     logJoinRequestRejected,
     logJoinRequestApproved,
+    logBoardJoinRequestApproved,
+    logBoardJoinRequestRejected,
     logMemberRoleChanged
 } = require("../activity/log");
+const { generateNotificationsForActivity } = require("../notification/create");
 
 
 // Invite a user to the board
@@ -54,9 +58,11 @@ const inviteMember = async (board, user, email, role) => {
         board.invites = [];
     }
 
-    board.members.push({
-        user: invitedUser._id,
+    board.invites.push({
+        email,
         role,
+        invited_by: user._id,
+        status: "pending"
     });
 
     await board.save();
@@ -64,16 +70,19 @@ const inviteMember = async (board, user, email, role) => {
     // Populate members to ensure FE has full user details
     await board.populate("members.user", "full_name email avatar");
 
-    // Ghi log
-    logMemberAdded({
-        entityType: 'board',
-        entityId: board._id,
+    // Gửi thông báo
+    generateNotificationsForActivity({
+        action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+        entity_type: ENTITY_TYPES.BOARD,
+        entity_id: board._id,
         workspace: board.workspace || null,
         board: board._id,
-        member: invitedUser,
-        role,
-        actor: user._id
-    });
+        actor: { _id: user._id },
+        metadata: {
+            member_id: invitedUser._id,
+            board_title: board.title
+        }
+    }).catch(err => console.error('[Notification] Failed to send board invite notify:', err));
 
     return { board, invitedUser };
 };
@@ -187,7 +196,7 @@ const approveJoinRequest = async (board, actor, requestId) => {
     const addedMember = board.members.find(m => m.user._id.equals(targetUserId));
 
     // Ghi log
-    logJoinRequestApproved(board, actor._id, targetUser);
+    logBoardJoinRequestApproved(board, actor._id, targetUser);
 
     // Socket broadcast
     emitToRoom({
@@ -215,7 +224,7 @@ const rejectJoinRequest = async (board, actor, requestId) => {
     await board.save();
 
     // Ghi log
-    logJoinRequestRejected(board, actor._id, targetUser);
+    logBoardJoinRequestRejected(board, actor._id, targetUser);
 
     return { targetUser };
 };

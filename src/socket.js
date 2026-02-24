@@ -47,6 +47,18 @@ module.exports = {
                 console.log(`Socket ${socket.id} left workspace room: workspace:${workspaceId}`);
             });
 
+            // Join user room for private notifications
+            socket.on("join-user", (userId) => {
+                socket.join(`user:${userId}`);
+                console.log(`Socket ${socket.id} joined user room: user:${userId}`);
+            });
+
+            // Leave user room
+            socket.on("leave-user", (userId) => {
+                socket.leave(`user:${userId}`);
+                console.log(`Socket ${socket.id} left user room: user:${userId}`);
+            });
+
             socket.on("disconnect", () => {
                 console.log("Client disconnected:", socket.id);
             });
