@@ -56,6 +56,7 @@ const ACTIVITY_ACTIONS = {
 
     // Member actions
     MEMBER_INVITED: 'member_invited',
+    DUE_DATE_REMINDER: 'due_date_reminder',
 };
 
 // Entity types

@@ -51,58 +51,76 @@ const shouldNotifyUser = (user, settingKey) => {
 const processNotificationBatch = async (notificationsData) => {
     if (!notificationsData || notificationsData.length === 0) return;
 
-    // Lấy danh sách recipient IDs để query settings
-    const recipientIds = notificationsData.map(n => n.recipient);
-
-    // Fetch User Settings
+    // Lọc và chuẩn bị dữ liệu
+    const recipientIds = [...new Set(notificationsData.map(n => n.recipient.toString()))];
     const users = await User.find({ _id: { $in: recipientIds } }).select("_id settings.notifications email");
     const userMap = new Map(users.map(u => [u._id.toString(), u]));
 
-    // Filter dựa trên Settings và loại trừ Actor
-    const validNotifications = notificationsData.filter(data => {
+    const finalNotificationsToCreate = [];
+    const AGGREGATION_WINDOW = 15 * 60 * 1000; // 15 phút
+
+    for (const data of notificationsData) {
         const recipientId = data.recipient.toString();
         const actorId = data.sender.toString();
 
-        // Không gửi cho chính mình
-        if (recipientId === actorId) return false;
+        if (recipientId === actorId) continue;
 
-        // Kiểm tra setting cá nhân
         const user = userMap.get(recipientId);
         const isMention = data.message.includes("nhắc đến bạn");
         const settingKey = getSettingKeyForAction(data.type, isMention);
 
-        return shouldNotifyUser(user, settingKey);
-    });
+        if (!shouldNotifyUser(user, settingKey)) continue;
+        // Tìm xem có thông báo nào tương tự (cùng loại, cùng người gửi, cùng thẻ) đang chưa đọc trong vòng 15p không
+        const query = {
+            recipient: data.recipient,
+            sender: data.sender,
+            type: data.type,
+            is_read: false,
+            create_at: { $gt: new Date(Date.now() - AGGREGATION_WINDOW) }
+        };
 
-    if (validNotifications.length === 0) {
-        return;
+        if (data.card) query.card = data.card;
+        else if (data.board) query.board = data.board;
+        else if (data.workspace) query.workspace = data.workspace;
+
+        const existingNotify = await Notification.findOne(query);
+
+        if (existingNotify) {
+            // Nếu đã có, chỉ cập nhật lại thời gian để đẩy lên đầu
+            existingNotify.create_at = new Date();
+            await existingNotify.save();
+
+            // Re-emit socket cho thông báo cũ đã được cập nhật
+            const populated = await Notification.findById(existingNotify._id)
+                .populate("sender", "_id full_name avatar username")
+                .populate("workspace", "_id title name type")
+                .populate("board", "_id title type")
+                .populate("card", "_id title cover")
+                .lean();
+
+            emitToRoom({ room: `user:${recipientId}`, event: "notification-new", data: populated, socketId: null });
+        } else {
+            finalNotificationsToCreate.push(data);
+        }
     }
 
-    // Insert vào DB
-    const createdNotificationsRaw = await Notification.insertMany(validNotifications);
-    const createdNotificationIds = createdNotificationsRaw.map(n => n._id);
+    if (finalNotificationsToCreate.length === 0) return;
 
-    // Populate Full Info cho Socket và Email
-    const createdNotifications = await Notification.find({ _id: { $in: createdNotificationIds } })
+    // Insert những thông báo thực sự mới
+    const createdRaw = await Notification.insertMany(finalNotificationsToCreate);
+
+    // Populate và Dispatch
+    const createdNotifications = await Notification.find({ _id: { $in: createdRaw.map(n => n._id) } })
         .populate("sender", "_id full_name avatar username")
         .populate("workspace", "_id title name type")
         .populate("board", "_id title type")
         .populate("card", "_id title cover")
         .lean();
 
-    // Socket Real-time & Send Email if Offline
     createdNotifications.forEach(notification => {
         const recipientId = notification.recipient.toString();
+        emitToRoom({ room: `user:${recipientId}`, event: "notification-new", data: notification, socketId: null });
 
-        // Gửi Socket
-        emitToRoom({
-            room: `user:${recipientId}`,
-            event: "notification-new",
-            data: notification,
-            socketId: null
-        });
-
-        // Kiểm tra User Online/Offline để gửi Email
         const user = userMap.get(recipientId);
         const isOnline = isUserOnline(recipientId);
         const shouldSendEmail = user?.settings?.notifications?.email !== false;
@@ -254,6 +272,18 @@ const generateNotificationsForActivity = async (activityDoc) => {
                 : `đã từ chối yêu cầu tham gia của bạn ${targetName}`;
 
             addNotify(metadata.request_user_id || metadata.member_id, message);
+        }
+
+        // DUE DATE REMINDERS (System generated)
+        else if (action === ACTIVITY_ACTIONS.DUE_DATE_REMINDER) {
+            const cardTitle = metadata.card_title || "Một thẻ của bạn";
+            const hoursLeft = metadata.hours_left || 24;
+            const message = `Sắp đến hạn chót cho thẻ "${cardTitle}" (còn ${hoursLeft}h nữa)`;
+
+            // Đối với reminder, recipientId được truyền trực tiếp qua metadata/activity
+            if (activity.recipient) {
+                addNotify(activity.recipient, message);
+            }
         }
 
         // Xử lý tạo và gửi thông báo
