@@ -5,6 +5,10 @@ const { app, corsOptions } = require('./app');
 const connectDB = require('./config/db');
 const socketIO = require('./socket');
 const router = require('./routes');
+const { initDueDateReminders } = require('./services/jobs/dueDateCron');
+
+// Khởi tạo Cron Jobs
+initDueDateReminders();
 
 // Kết nối DB trước khi khởi động server
 connectDB();
