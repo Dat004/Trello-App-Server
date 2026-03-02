@@ -32,6 +32,12 @@ router.post('/:boardId/invite',
   BoardController.inviteMemberToBoard
 );
 
+// [PATCH] /api/boards/:boardId/invite
+router.patch('/:boardId/invite',
+  protect,
+  BoardController.respondToInvite
+);
+
 // [PATCH] /api/boards/:boardId/join/:requestId
 router.patch('/:boardId/join/:requestId',
   protect,

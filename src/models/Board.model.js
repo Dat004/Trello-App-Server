@@ -61,6 +61,11 @@ const BoardSchema = new mongoose.Schema({
         required: true,
         lowercase: true,
       },
+      message: {
+        type: String,
+        trim: true,
+        default: "",
+      },
       role: {
         type: String,
         enum: ["admin", "member", "viewer"],

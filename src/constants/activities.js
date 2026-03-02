@@ -56,6 +56,8 @@ const ACTIVITY_ACTIONS = {
 
     // Member actions
     MEMBER_INVITED: 'member_invited',
+    INVITE_ACCEPTED: 'invite_accepted',
+    INVITE_REJECTED: 'invite_rejected',
     DUE_DATE_REMINDER: 'due_date_reminder',
 };
 

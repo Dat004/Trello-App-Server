@@ -81,12 +81,17 @@ const updatePermissionsSchema = z.object({
 });
 
 const inviteMemberSchema = z.object({
-  email: z
-    .string()
-    .min(1, "Email không được để trống.")
-    .email({ message: "Email không hợp lệ. Vui lòng nhập lại" })
-    .lowercase(),
+  emails: z
+    .array(
+      z
+        .string()
+        .min(1, "Email không được để trống.")
+        .email({ message: "Email không hợp lệ. Vui lòng nhập lại" })
+        .lowercase()
+    )
+    .min(1, "Vui lòng nhập ít nhất một email"),
   role: z.enum(["admin", "member", "viewer"]).default("member"),
+  message: z.string().trim().max(200, "Lời nhắn không quá 200 ký tự").optional(),
 });
 
 const objectJd = z
