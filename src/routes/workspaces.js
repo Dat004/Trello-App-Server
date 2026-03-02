@@ -40,12 +40,18 @@ router.get('/:workspaceId/members',
     WorkspaceController.getWorkspaceMembers
 );
 
-// [POST] /api/workspaces/:workspaces/invite
+// [POST] /api/workspaces/:workspaceId/invite
 router.post('/:workspaceId/invite',
     protect,
     loadContext,
     authorize(PERMISSIONS.WORKSPACE.INVITE),
     WorkspaceController.inviteMember
+);
+
+// [PATCH] /api/workspaces/:workspaceId/invite
+router.patch('/:workspaceId/invite',
+    protect,
+    WorkspaceController.respondToInvite
 );
 
 // [PATCH] /api/workspaces/:workspaces/join/:requestId
