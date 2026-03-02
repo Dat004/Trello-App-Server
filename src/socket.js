@@ -19,6 +19,28 @@ module.exports = {
             socket.on("register-user", (user) => {
                 activeUsers.set(socket.id, { user, rooms: new Set() });
             });
+            // --- WORKSPACE PRESENCE ---
+            socket.on("join-workspace", (workspaceId) => {
+                socket.join(`workspace:${workspaceId}`);
+
+                const userData = activeUsers.get(socket.id);
+                if (userData) {
+                    userData.workspaceId = workspaceId;
+                    userData.rooms.add(`workspace:${workspaceId}`);
+
+                    // Broadcast updated presence to the workspace
+                    const workspacePresence = getRoomPresence(io, `workspace:${workspaceId}`, activeUsers);
+                    io.to(`workspace:${workspaceId}`).emit("workspace-presence-update", {
+                        workspaceId,
+                        members: workspacePresence
+                    });
+                } 
+                console.log(`Socket ${socket.id} joined workspace: workspace:${workspaceId}`);
+            });
+
+            socket.on("leave-workspace", (workspaceId) => {
+                handleLeaveRoom(socket, `workspace:${workspaceId}`, "workspace-presence-update", { workspaceId }, activeUsers, io);
+            });
 
             // --- BOARD PRESENCE ---
             socket.on("join-board", (boardId) => {
@@ -132,11 +154,14 @@ module.exports = {
                     userData.rooms.forEach(room => {
                         socket.leave(room);
                         const [type, id] = room.split(":");
-                        const event = type === "board" ? "board-presence-update" : "card-presence-update";
+                        let event = "card-presence-update";
+                        if (type === "board") event = "board-presence-update";
+                        else if (type === "workspace") event = "workspace-presence-update";
+
                         const presence = getRoomPresence(io, room, activeUsers, socket.id);
 
                         io.to(room).emit(event, {
-                            [type === "board" ? "boardId" : "cardId"]: id,
+                            [type === "board" ? "boardId" : type === "workspace" ? "workspaceId" : "cardId"]: id,
                             members: presence
                         });
                     });

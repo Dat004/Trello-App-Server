@@ -643,20 +643,69 @@ exports.unarchiveBoard = async (req, res, next) => {
 // Invite member vào board
 module.exports.inviteMemberToBoard = async (req, res, next) => {
   try {
-    const { email, role } = inviteMemberSchema.parse(req.body);
-    const board = req.board;
+    const { emails, role, message = "" } = inviteMemberSchema.parse(req.body);
+    const board = await Board.findOne({
+      _id: req.params.boardId,
+      deleted_at: null,
+    });
 
-    const { board: updatedBoard } = await BoardMembershipService.inviteMember(
+    if (!board) {
+      const err = new Error("Board không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const { board: updatedBoard, results } = await BoardMembershipService.inviteMembers(
       board,
       req.user,
-      email,
-      role
+      emails,
+      role,
+      message
     );
 
     res.status(200).json({
       success: true,
-      message: "Mời thành viên vào board thành công",
-      data: { board: updatedBoard },
+      message: "Gửi lời mời hoàn tất",
+      data: { board: updatedBoard, results },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Respond to board invite (accept / reject)
+module.exports.respondToInvite = async (req, res, next) => {
+  try {
+    const { action, notification_id } = req.body;
+
+    if (!["accept", "reject"].includes(action)) {
+      const err = new Error("action phải là 'accept' hoặc 'reject'");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const board = await Board.findOne({
+      _id: req.params.boardId,
+      deleted_at: null,
+    });
+
+    if (!board) {
+      const err = new Error("Board không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const result = await BoardMembershipService.respondToInvite(
+      board,
+      req.user,
+      action,
+      notification_id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: action === "accept" ? "Đã chấp nhận lời mời" : "Đã từ chối lời mời",
+      data: result,
     });
   } catch (error) {
     next(error);
