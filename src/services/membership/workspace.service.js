@@ -1,10 +1,14 @@
 const Workspace = require("../../models/Workspace.model");
 const Board = require("../../models/Board.model");
 const User = require("../../models/User.model");
+const Notification = require("../../models/Notification.model");
+const withTransaction = require("../common/withTransaction");
 const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require("../../constants/activities");
+const { emitToRoom } = require("../../utils/socketHelper");
 
-const withTransaction = require('../common/withTransaction');
 const {
+    logActivity,
+    logMemberAdded,
     logMemberRoleChanged,
     logMemberRemoved,
     logJoinRequestApproved,
@@ -12,57 +16,95 @@ const {
 } = require("../activity/log");
 const { generateNotificationsForActivity } = require("../notification/create");
 
-// Invite a user to the workspace
-const inviteMember = async (workspace, user, email, role) => {
-    // Kiểm tra user có tồn tại không
-    const invitedUser = await User.findOne({ email });
-    if (!invitedUser) {
-        throw new Error("Email này chưa được đăng ký. Không thể gửi lời mời.");
-    }
 
-    // Kiểm tra user đã là thành viên hoặc đã được mời chưa
-    const existingMember = workspace.members.find(
-        (m) => m.user.toString() === invitedUser._id.toString()
-    );
-    const existingInvite = workspace.invites.find(
-        (i) => i.email === email && i.status === "pending"
-    );
-
-    if (existingMember || existingInvite) {
-        throw new Error("Người dùng này đã tham gia hoặc đã được mời");
-    }
+// Invite multiple users to the workspace
+const inviteMembers = async (workspace, user, emails, role, message = "") => {
+    const results = {
+        invited: [],
+        failed: [],
+    };
 
     // Kiểm tra giới hạn thành viên
     const pendingCount = workspace.invites.filter((i) => i.status === "pending").length;
-    if (workspace.members.length + pendingCount >= workspace.max_members) {
-        throw new Error("Workspace đã đạt giới hạn thành viên");
+    if (workspace.members.length + pendingCount + emails.length > workspace.max_members) {
+        throw new Error("Số lượng email mời vượt quá giới hạn thành viên của Workspace");
     }
 
-    // Thêm lời mời
-    workspace.invites.push({
-        email,
-        role,
-        invited_by: user._id,
-    });
+    for (const email of emails) {
+        try {
+            // Kiểm tra user có tồn tại không
+            const invitedUser = await User.findOne({ email });
+            if (!invitedUser) {
+                results.failed.push({ email, reason: "Email này chưa được đăng ký tài khoản." });
+                continue;
+            }
+
+            // Kiểm tra user đã là thành viên hoặc đã được mời chưa
+            const existingMember = workspace.members.find(
+                (m) => m.user.toString() === invitedUser._id.toString()
+            );
+            const existingInvite = workspace.invites.find(
+                (i) => i.email === email && i.status === "pending"
+            );
+
+            if (existingMember || existingInvite) {
+                results.failed.push({ email, reason: "Người dùng này đã tham gia hoặc đã được mời." });
+                continue;
+            }
+
+            // Thêm lời mời
+            workspace.invites.push({
+                email,
+                role,
+                message,
+                invited_by: user._id,
+            });
+
+            results.invited.push({ email, user: invitedUser });
+        } catch (error) {
+            results.failed.push({ email, reason: error.message });
+        }
+    }
 
     await workspace.save();
     await workspace.populate('members.user', 'full_name email avatar');
 
-    // Gửi thông báo
-    generateNotificationsForActivity({
-        action: ACTIVITY_ACTIONS.MEMBER_INVITED,
-        entity_type: ENTITY_TYPES.WORKSPACE,
-        entity_id: workspace._id,
-        workspace: workspace._id,
-        board: null,
-        actor: { _id: user._id },
-        metadata: {
-            member_id: invitedUser._id,
-            workspace_title: workspace.title
-        }
-    }).catch(err => console.error('[Notification] Failed to send invite notify:', err));
+    // Ghi activity - 1 lần duy nhất (activity feed)
+    // Không truyền member_id vào log vì đây là batch invite
+    if (results.invited.length > 0) {
+        logActivity({
+            action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+            entityType: ENTITY_TYPES.WORKSPACE,
+            entityId: workspace._id,
+            workspace: workspace._id,
+            board: null,
+            actor: user._id,
+            metadata: {
+                invited_count: results.invited.length,
+                role,
+                message
+            }
+        });
+    }
 
-    return workspace;
+    // Gửi notification riêng cho từng người được mời
+    for (const item of results.invited) {
+        generateNotificationsForActivity({
+            action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+            entity_type: ENTITY_TYPES.WORKSPACE,
+            entity_id: workspace._id,
+            workspace: workspace._id,
+            board: null,
+            actor: { _id: user._id },
+            metadata: {
+                member_id: item.user._id,
+                workspace_title: workspace.name || workspace.title,
+                message
+            }
+        }).catch(err => console.error('[Notification] workspace invite failed:', err));
+    }
+
+    return { workspace, results };
 };
 
 // Remove member from workspace (Kick)
@@ -247,8 +289,98 @@ const rejectJoinRequest = async (workspace, actor, requestId) => {
     return { targetUser };
 };
 
+// Accept or Reject invite
+const respondToInvite = async (workspace, user, action, notificationId) => {
+    // Tìm lời mời dựa theo email người đang đăng nhập
+    const invite = workspace.invites.find(
+        i => i.email === user.email && i.status === "pending"
+    );
+
+    if (!invite) throw new Error("Lời mời không tồn tại hoặc đã hết hiệu lực");
+
+    if (action === "accept") {
+        // Kiểm tra đã là thành viên chưa
+        const isAlreadyMember = workspace.members.some(m => m.user.equals(user._id));
+        if (isAlreadyMember) {
+            workspace.invites = workspace.invites.filter(i => i.email !== user.email);
+            await workspace.save();
+            throw new Error("Bạn đã là thành viên của workspace này");
+        }
+
+        // Kiểm tra giới hạn thành viên
+        if (workspace.members.length >= workspace.max_members) {
+            throw new Error("Workspace đã đạt giới hạn thành viên");
+        }
+
+        // Thêm vào danh sách thành viên
+        workspace.members.push({
+            user: user._id,
+            role: invite.role || "member",
+            joinedAt: new Date()
+        });
+    }
+
+    // Xóa lời mời (cả accept lẫn reject)
+    workspace.invites = workspace.invites.filter(i => i.email !== user.email);
+    await workspace.save();
+
+    // Xóa notification lời mời khỏi DB bằng ID cụ thể
+    if (notificationId) {
+        await Notification.findOneAndDelete({
+            _id: notificationId,
+            recipient: user._id // Bảo vệ: chỉ xóa được notification của chính mình
+        });
+    }
+
+    // Gửi thông báo đến người đã mời
+    if (invite.invited_by) {
+        generateNotificationsForActivity({
+            action: action === "accept" ? ACTIVITY_ACTIONS.INVITE_ACCEPTED : ACTIVITY_ACTIONS.INVITE_REJECTED,
+            entity_type: ENTITY_TYPES.WORKSPACE,
+            entity_id: workspace._id,
+            workspace: workspace._id,
+            board: null,
+            actor: { _id: user._id },
+            metadata: {
+                invited_by: invite.invited_by
+            }
+        }).catch(err => console.error('[Notification] respond to invite failed:', err));
+    }
+
+    if (action === "accept") {
+        await workspace.populate({
+            path: 'members.user',
+            select: '_id full_name email avatar.url'
+        });
+        const addedMember = workspace.members.find(m => m.user._id.equals(user._id));
+
+        // Ghi activity
+        logMemberAdded({
+            entityType: ENTITY_TYPES.WORKSPACE,
+            entityId: workspace._id,
+            workspace: workspace._id,
+            board: null,
+            member: user,
+            role: invite.role || "member",
+            actor: user._id
+        });
+
+        emitToRoom({
+            room: `workspace:${workspace._id}`,
+            event: "member-joined",
+            data: addedMember,
+            socketId: null
+        });
+
+        return { action: "accepted", member: addedMember };
+    }
+
+    return { action: "rejected" };
+};
+
 module.exports = {
-    inviteMember,
+    inviteMembers,
+    respondToInvite,
     kickMember,
     updateMemberRole,
     approveJoinRequest,

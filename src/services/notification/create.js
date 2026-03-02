@@ -22,11 +22,7 @@ const getSettingKeyForAction = (action, isMention = false) => {
         case ACTIVITY_ACTIONS.CARD_UPDATED:
             return "due_reminders";
         case ACTIVITY_ACTIONS.MEMBER_ADDED:
-        case ACTIVITY_ACTIONS.MEMBER_REMOVED:
         case ACTIVITY_ACTIONS.MEMBER_ROLE_CHANGED:
-        case ACTIVITY_ACTIONS.MEMBER_INVITED:
-        case ACTIVITY_ACTIONS.JOIN_REQUEST_APPROVED:
-        case ACTIVITY_ACTIONS.JOIN_REQUEST_REJECTED:
             return "board_updates";
         case ACTIVITY_ACTIONS.ATTACHMENT_UPLOADED:
         case ACTIVITY_ACTIONS.CHECKLIST_ITEM_ADDED:
@@ -70,7 +66,21 @@ const processNotificationBatch = async (notificationsData) => {
         const settingKey = getSettingKeyForAction(data.type, isMention);
 
         if (!shouldNotifyUser(user, settingKey)) continue;
-        // Tìm xem có thông báo nào tương tự (cùng loại, cùng người gửi, cùng thẻ) đang chưa đọc trong vòng 15p không
+
+        // Các actions quan trọng này không gộp thông báo - mỗi sự kiện là độc lập
+        if (
+            data.type === ACTIVITY_ACTIONS.MEMBER_INVITED ||
+            data.type === ACTIVITY_ACTIONS.INVITE_ACCEPTED ||
+            data.type === ACTIVITY_ACTIONS.INVITE_REJECTED ||
+            data.type === ACTIVITY_ACTIONS.MEMBER_REMOVED ||
+            data.type === ACTIVITY_ACTIONS.MEMBER_ADDED ||
+            data.type === ACTIVITY_ACTIONS.MEMBER_ROLE_CHANGED
+        ) {
+            finalNotificationsToCreate.push(data);
+            continue;
+        }
+
+        // Tìm xem có thông báo nào tương tự (cùng loại, cùng người gửi) đang chưa đọc trong vòng 15p không
         const query = {
             recipient: data.recipient,
             sender: data.sender,
@@ -247,7 +257,8 @@ const generateNotificationsForActivity = async (activityDoc) => {
             if (action === ACTIVITY_ACTIONS.MEMBER_ADDED) {
                 addNotify(metadata.member_id, `đã thêm bạn vào ${entityName} "${targetName}"`);
             } else if (action === ACTIVITY_ACTIONS.MEMBER_INVITED) {
-                addNotify(metadata.member_id, `đã mời bạn tham gia ${entityName} "${targetName}"`);
+                const inviteMsg = metadata.message ? ` kèm lời nhắn: "${metadata.message}"` : "";
+                addNotify(metadata.member_id, `đã mời bạn tham gia ${entityName} "${targetName}"${inviteMsg}`);
             } else if (action === ACTIVITY_ACTIONS.MEMBER_REMOVED) {
                 addNotify(metadata.member_id, `đã xóa bạn khỏi ${entityName} "${targetName}"`);
             } else if (action === ACTIVITY_ACTIONS.MEMBER_ROLE_CHANGED) {
@@ -274,6 +285,30 @@ const generateNotificationsForActivity = async (activityDoc) => {
             addNotify(metadata.request_user_id || metadata.member_id, message);
         }
 
+        // INVITE RESPONSES
+        else if ([ACTIVITY_ACTIONS.INVITE_ACCEPTED, ACTIVITY_ACTIONS.INVITE_REJECTED].includes(action)) {
+            const isBoard = entity_type === ENTITY_TYPES.BOARD;
+            let targetName = "";
+
+            if (isBoard) {
+                const b = await Board.findById(entity_id).select("title");
+                targetName = b?.title || "Bảng";
+            } else {
+                const w = await Workspace.findById(entity_id).select("title name");
+                targetName = w?.title || w?.name || "Workspace";
+            }
+
+            const entityName = isBoard ? "bảng" : "không gian làm việc";
+            const message = action === ACTIVITY_ACTIONS.INVITE_ACCEPTED
+                ? `đã chấp nhận lời mời tham gia ${entityName} "${targetName}"`
+                : `đã từ chối lời mời tham gia ${entityName} "${targetName}"`;
+
+            // Thông báo gửi đến người đã gửi lời mời (lấy từ metadata)
+            if (metadata.invited_by) {
+                addNotify(metadata.invited_by, message);
+            }
+        }
+
         // DUE DATE REMINDERS (System generated)
         else if (action === ACTIVITY_ACTIONS.DUE_DATE_REMINDER) {
             const cardTitle = metadata.card_title || "Một thẻ của bạn";
@@ -292,7 +327,8 @@ const generateNotificationsForActivity = async (activityDoc) => {
         await processNotificationBatch(finalBatch);
 
     } catch (error) {
-        console.error("[Notification Generator] Critical Failure:", error);
+        console.error("[Notification Generator] Critical Failure:", error.message, error.stack);
+        throw error; // Re-throw để caller có thể catch
     }
 };
 
