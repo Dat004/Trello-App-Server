@@ -434,28 +434,76 @@ module.exports.updatePermissions = async (req, res, next) => {
 
 exports.inviteMember = async (req, res, next) => {
   try {
-    const { email: emailLower, role = "member" } = inviteMemberSchema.parse(
+    const { emails, role = "member", message = "" } = inviteMemberSchema.parse(
       req.body
     );
 
-    const workspace = req.workspace;
+    const workspace = await Workspace.findOne({
+      _id: req.params.workspaceId,
+      deleted_at: null,
+    });
 
-    const updatedWorkspace = await WorkspaceMembershipService.inviteMember(
+    if (!workspace) {
+      const err = new Error("Workspace không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const { workspace: updatedWorkspace, results } = await WorkspaceMembershipService.inviteMembers(
       workspace,
       req.user,
-      emailLower,
-      role
+      emails,
+      role,
+      message
     );
 
     res.status(200).json({
       success: true,
-      message: "Gửi lời mời thành công",
-      data: { workspace: updatedWorkspace },
+      message: "Gửi lời mời hoàn tất",
+      data: { workspace: updatedWorkspace, results },
     });
   } catch (error) {
     if (error.message.includes("không có quyền") || error.message.includes("giới hạn")) {
       error.statusCode = 400;
     }
+    next(error);
+  }
+};
+
+exports.respondToInvite = async (req, res, next) => {
+  try {
+    const { action, notification_id } = req.body;
+
+    if (!["accept", "reject"].includes(action)) {
+      const err = new Error("action phải là 'accept' hoặc 'reject'");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    const workspace = await Workspace.findOne({
+      _id: req.params.workspaceId,
+      deleted_at: null,
+    });
+
+    if (!workspace) {
+      const err = new Error("Workspace không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const result = await WorkspaceMembershipService.respondToInvite(
+      workspace,
+      req.user,
+      action,
+      notification_id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: action === "accept" ? "Đã chấp nhận lời mời" : "Đã từ chối lời mời",
+      data: result,
+    });
+  } catch (error) {
     next(error);
   }
 };
