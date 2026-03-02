@@ -351,6 +351,23 @@ const logBoardJoinRequestRejected = (board, actor, requestUser) => {
     });
 };
 
+const logMemberInvited = ({ entityType, entityId, workspace, board, member, role, message, actor }) => {
+    return logActivity({
+        action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+        entityType,
+        entityId,
+        workspace,
+        board,
+        actor,
+        metadata: {
+            member_id: member._id,
+            member_name: member.full_name || member.email,
+            role,
+            message: message || ""
+        }
+    });
+};
+
 // List activities
 const logListCreated = (list, board, actor) => {
     return logActivity({
@@ -692,6 +709,7 @@ module.exports = {
     logMemberAdded,
     logMemberRemoved,
     logMemberRoleChanged,
+    logMemberInvited,
 
     // Permissions & Join Requests
     logPermissionChanged,
