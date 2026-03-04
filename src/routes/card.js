@@ -61,6 +61,15 @@ router.patch(
   CardController.moveCard
 );
 
+// [PATCH] /api/boards/:boardId/lists/:listId/cards/:cardId/due_complete
+router.patch(
+  "/:cardId/due_complete",
+  protect,
+  loadContext,
+  authorize(PERMISSIONS.CARD.TOGGLE_COMPLETE),
+  CardController.toggleComplete
+);
+
 // [GET] /api/boards/:boardId/lists/:listId/cards/:cardId
 router.get("/:cardId",
   protect,
