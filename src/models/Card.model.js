@@ -39,6 +39,10 @@ const CardSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  due_complete: {
+    type: Boolean,
+    default: false,
+  },
   priority: {
     type: String,
     enum: ["low", "medium", "high"],

@@ -31,7 +31,8 @@ const PERMISSIONS = {
         DELETE: 'card:delete',
         MOVE: 'card:move',
         ASSIGN_MEMBER: 'card:assign_member',
-        REMOVE_MEMBER: 'card:remove_member'
+        REMOVE_MEMBER: 'card:remove_member',
+        TOGGLE_COMPLETE: 'card:toggle_complete'
     },
     COMMENT: {
         CREATE: 'comment:create',

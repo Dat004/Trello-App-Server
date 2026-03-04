@@ -162,6 +162,10 @@ const cardSchema = z.object({
     .optional(),
 });
 
+const toggleCompleteSchema = z.object({
+  due_complete: z.boolean({ required_error: "Trường due_complete bị thiếu" }),
+});
+
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const attachmentInputSchema = z.object({
   name: z.string().trim(),
@@ -214,6 +218,7 @@ module.exports = {
   updateBoardsSchema,
   listSchema,
   cardSchema,
+  toggleCompleteSchema,
   attachmentInputSchema,
   createBoardFromTemplateSchema,
   getActivitiesSchema,

@@ -1,7 +1,7 @@
 const PERMISSIONS = require('./definitions');
 
 const defineAbilitiesFor = (user, context = {}) => {
-    const { workspace, board, comment, attachment } = context;
+    const { workspace, board, card, comment, attachment } = context;
     const can = new Set();
     const userId = user ? user._id : null;
 
@@ -134,6 +134,11 @@ const defineAbilitiesFor = (user, context = {}) => {
 
                 // ATTACHMENT
                 can.add(PERMISSIONS.ATTACHMENT.CREATE);
+
+                // Nếu là Assignee thì được quyền đổi trạng thái Hoàn thành
+                if (card && card.members && card.members.some(m => m.equals(userId))) {
+                    can.add(PERMISSIONS.CARD.TOGGLE_COMPLETE);
+                }
             }
 
             // --- ADMIN ONLY ---
@@ -147,6 +152,7 @@ const defineAbilitiesFor = (user, context = {}) => {
                 can.add(PERMISSIONS.COMMENT.DELETE);
                 can.add(PERMISSIONS.ATTACHMENT.DELETE);
                 can.add(PERMISSIONS.ATTACHMENT.UPDATE);
+                can.add(PERMISSIONS.CARD.TOGGLE_COMPLETE);
             }
 
             // 3. RESOURCE OWNERSHIP
