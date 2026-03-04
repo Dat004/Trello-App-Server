@@ -3,7 +3,7 @@ const Card = require("../models/Card.model");
 const List = require("../models/List.model");
 const { emitToRoom } = require("../utils/socketHelper");
 
-const { cardSchema } = require("../utils/validationSchemas");
+const { cardSchema, toggleCompleteSchema } = require("../utils/validationSchemas");
 const {
   logCardCreated,
   logCardUpdated,
@@ -168,6 +168,58 @@ module.exports.updateInfo = async (req, res, next) => {
     });
   } catch (err) {
     console.log(err);
+    next(err);
+  }
+};
+
+// Toggle complete
+module.exports.toggleComplete = async (req, res, next) => {
+  try {
+    const validatedData = toggleCompleteSchema.parse(req.body);
+    const cardId = req.params.cardId;
+
+    const oldCard = await Card.findOne({ _id: cardId, deleted_at: null });
+    if (!oldCard) {
+      const err = new Error("Không tìm thấy card");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    if (oldCard.due_complete === validatedData.due_complete) {
+      return res.status(200).json({
+        success: true,
+        message: "Không có thay đổi về trạng thái hoàn thành",
+        data: { card: oldCard },
+      });
+    }
+
+    const card = await Card.findOneAndUpdate(
+      { _id: cardId, deleted_at: null },
+      { $set: { due_complete: validatedData.due_complete } },
+      { new: true, runValidators: true }
+    );
+
+    // Socket.io emit
+    emitToRoom({
+      room: `board:${card.board}`,
+      event: "card-updated",
+      data: { cardId: card._id, updates: { due_complete: validatedData.due_complete } },
+      socketId: req.headers["x-socket-id"],
+    });
+
+    // Log activity
+    const changes = {
+      due_complete: { from: oldCard.due_complete, to: validatedData.due_complete }
+    };
+    const list = await List.findById(card.list);
+    logCardUpdated(card, list, req.board, req.user._id, changes);
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật trạng thái hoàn thành thành công",
+      data: { card },
+    });
+  } catch (err) {
     next(err);
   }
 };
