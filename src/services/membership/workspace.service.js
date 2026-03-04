@@ -7,15 +7,14 @@ const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require("../../constants/activities")
 const { emitToRoom } = require("../../utils/socketHelper");
 
 const {
-    logActivity,
     logMemberAdded,
+    logMemberInvited,
     logMemberRoleChanged,
     logMemberRemoved,
     logJoinRequestApproved,
     logJoinRequestRejected
 } = require("../activity/log");
 const { generateNotificationsForActivity } = require("../notification/create");
-
 
 // Invite multiple users to the workspace
 const inviteMembers = async (workspace, user, emails, role, message = "") => {
@@ -69,39 +68,18 @@ const inviteMembers = async (workspace, user, emails, role, message = "") => {
     await workspace.save();
     await workspace.populate('members.user', 'full_name email avatar');
 
-    // Ghi activity - 1 lần duy nhất (activity feed)
-    // Không truyền member_id vào log vì đây là batch invite
-    if (results.invited.length > 0) {
-        logActivity({
-            action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+    // Ghi activity cho từng người được mời
+    for (const item of results.invited) {
+        logMemberInvited({
             entityType: ENTITY_TYPES.WORKSPACE,
             entityId: workspace._id,
             workspace: workspace._id,
             board: null,
-            actor: user._id,
-            metadata: {
-                invited_count: results.invited.length,
-                role,
-                message
-            }
+            member: item.user,
+            role,
+            message,
+            actor: user._id
         });
-    }
-
-    // Gửi notification riêng cho từng người được mời
-    for (const item of results.invited) {
-        generateNotificationsForActivity({
-            action: ACTIVITY_ACTIONS.MEMBER_INVITED,
-            entity_type: ENTITY_TYPES.WORKSPACE,
-            entity_id: workspace._id,
-            workspace: workspace._id,
-            board: null,
-            actor: { _id: user._id },
-            metadata: {
-                member_id: item.user._id,
-                workspace_title: workspace.name || workspace.title,
-                message
-            }
-        }).catch(err => console.error('[Notification] workspace invite failed:', err));
     }
 
     return { workspace, results };

@@ -184,8 +184,14 @@ const generateNotificationsForActivity = async (activityDoc) => {
                 }
 
                 // Cập nhật hạn chót
-                else if (action === ACTIVITY_ACTIONS.CARD_UPDATED && activity.changes?.due_date) {
-                    card.members.forEach(m => addNotify(m, `đã cập nhật hạn chót cho thẻ "${title}"`));
+                else if (action === ACTIVITY_ACTIONS.CARD_UPDATED) {
+                    if (activity.changes?.due_date) {
+                        card.members.forEach(m => addNotify(m, `đã cập nhật hạn chót cho thẻ "${title}"`));
+                    }
+                    if (activity.changes?.due_complete) {
+                        const status = activity.changes.due_complete.to ? "hoàn thành" : "chưa hoàn thành";
+                        card.members.forEach(m => addNotify(m, `đã đánh dấu ${status} hạn chót thẻ "${title}"`));
+                    }
                 }
 
                 // Tệp đính kèm

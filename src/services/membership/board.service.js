@@ -6,17 +6,13 @@ const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require("../../constants/activities")
 
 const { emitToRoom } = require("../../utils/socketHelper");
 const {
-    logActivity,
     logMemberAdded,
     logMemberInvited,
     logMemberRemoved,
-    logJoinRequestRejected,
-    logJoinRequestApproved,
     logBoardJoinRequestApproved,
     logBoardJoinRequestRejected,
     logMemberRoleChanged
 } = require("../activity/log");
-const { generateNotificationsForActivity } = require("../notification/create");
 
 // Invite multiple users to the board
 const inviteMembers = async (board, user, emails, role, message = "") => {
@@ -92,39 +88,18 @@ const inviteMembers = async (board, user, emails, role, message = "") => {
     // Populate members to ensure FE has full user details
     await board.populate("members.user", "full_name email avatar");
 
-    // Ghi activity - 1 lần duy nhất (activity feed)
-    if (results.invited.length > 0) {
-        logActivity({
-            action: ACTIVITY_ACTIONS.MEMBER_INVITED,
+    // Ghi activity cho từng người được mời
+    for (const item of results.invited) {
+        logMemberInvited({
             entityType: ENTITY_TYPES.BOARD,
             entityId: board._id,
             workspace: board.workspace || null,
             board: board._id,
-            actor: user._id,
-            metadata: {
-                invited_count: results.invited.length,
-                board_title: board.title,
-                role,
-                message
-            }
+            member: item.user,
+            role,
+            message,
+            actor: user._id
         });
-    }
-
-    // Gửi notification riêng cho từng người được mời
-    for (const item of results.invited) {
-        generateNotificationsForActivity({
-            action: ACTIVITY_ACTIONS.MEMBER_INVITED,
-            entity_type: ENTITY_TYPES.BOARD,
-            entity_id: board._id,
-            workspace: board.workspace || null,
-            board: board._id,
-            actor: { _id: user._id },
-            metadata: {
-                member_id: item.user._id,
-                board_title: board.title,
-                message
-            }
-        }).catch(err => console.error('[Notification] board invite failed:', err));
     }
 
     return { board, results };
