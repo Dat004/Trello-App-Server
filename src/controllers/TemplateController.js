@@ -6,6 +6,8 @@ const List = require("../models/List.model");
 const Card = require("../models/Card.model");
 const withTransaction = require("../services/common/withTransaction");
 const { createBoardFromTemplateSchema } = require("../utils/validationSchemas");
+const { emitToRoom } = require("../utils/socketHelper");
+const { logBoardCreated } = require("../services/activity/log");
 
 // Lấy tất cả templates active, sorted by popularity
 module.exports.getAllTemplates = async (req, res, next) => {
@@ -209,6 +211,11 @@ module.exports.createBoardFromTemplate = async (req, res, next) => {
                             workspace: board.workspace || null,
                             pos: 65536 * (cardIndex + 1),
                             creator: req.user._id,
+                            checklist: (templateCard.checklist || []).map(text => ({ text, completed: false })),
+                            labels: (templateCard.labels || []).map(name => ({
+                                name,
+                                color: "bg-blue-500" // Mặc định màu cho nhãn từ template
+                            }))
                         };
 
                         await Card.create([cardData], { session });
@@ -221,6 +228,19 @@ module.exports.createBoardFromTemplate = async (req, res, next) => {
 
         // Tăng usage count cho template
         await template.incrementUsage();
+
+        // Ghi activity log
+        logBoardCreated(createdBoard, req.user._id);
+
+        // Socket broadcast real-time
+        if (createdBoard.workspace) {
+            emitToRoom({
+                room: `workspace:${createdBoard.workspace}`,
+                event: "board-created",
+                data: createdBoard,
+                socketId: req.headers["x-socket-id"]
+            });
+        }
 
         res.status(201).json({
             success: true,
