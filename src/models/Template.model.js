@@ -17,6 +17,14 @@ const ExampleCardSchema = new Schema({
     position: {
         type: Number,
         default: 0
+    },
+    checklist: {
+        type: [String],
+        default: []
+    },
+    labels: {
+        type: [String],
+        default: []
     }
 }, { _id: true });
 
@@ -129,6 +137,23 @@ const TemplateSchema = new Schema({
     updated_at: {
         type: Date,
         default: Date.now
+    },
+
+    is_ai_generated: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+
+    ai_metadata: {
+        prompt: String,
+        model: String,
+        usage: {
+            prompt_tokens: Number,
+            completion_tokens: Number,
+            total_tokens: Number
+        },
+        generated_at: Date
     }
 });
 

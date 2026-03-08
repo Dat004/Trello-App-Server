@@ -204,6 +204,12 @@ const removeCardMemberSchema = z.object({
   userId: objectJd,
 });
 
+const generateTemplateSchema = z.object({
+  prompt: z.string().trim().min(5, "Prompt phải có ít nhất 5 ký tự").max(500, "Prompt không quá 500 ký tự"),
+  workspaceId: objectJd.optional(),
+  language: z.enum(["vi", "en"]).default("vi"),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -224,4 +230,5 @@ module.exports = {
   getActivitiesSchema,
   assignCardMemberSchema,
   removeCardMemberSchema,
+  generateTemplateSchema,
 };

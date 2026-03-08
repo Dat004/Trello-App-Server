@@ -11,6 +11,7 @@ const listRouter = require('./list');
 const authRouter = require('./auth');
 const meRouter = require('./users');
 const notificationRouter = require('./notifications');
+const aiRouter = require('./ai');
 
 function router(app) {
     // Attachment card routes
@@ -51,6 +52,9 @@ function router(app) {
 
     // User routes
     app.use('/api/users', meRouter);
+
+    // AI routes
+    app.use('/api/ai', aiRouter);
 }
 
 module.exports = router;

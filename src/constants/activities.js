@@ -59,6 +59,9 @@ const ACTIVITY_ACTIONS = {
     INVITE_ACCEPTED: 'invite_accepted',
     INVITE_REJECTED: 'invite_rejected',
     DUE_DATE_REMINDER: 'due_date_reminder',
+
+    // Template actions
+    TEMPLATE_GENERATED: 'template_generated',
 };
 
 // Entity types
@@ -69,6 +72,7 @@ const ENTITY_TYPES = {
     CARD: 'card',
     COMMENT: 'comment',
     ATTACHMENT: 'attachment',
+    TEMPLATE: 'template',
 };
 
 // Xuất ra array cho Mongoose enum validation
