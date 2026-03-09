@@ -5,6 +5,8 @@ const authController = require('../controllers/AuthController');
 
 // [POST] /api/auth/register
 router.post('/register', authController.register);
+// [POST] /api/auth/google
+router.post('/google', authController.googleLogin);
 // [POST] /api/auth/login
 router.post('/login', authController.login);
 // [POST] /api/auth/logout

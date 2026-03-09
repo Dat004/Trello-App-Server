@@ -45,6 +45,12 @@ const UserSchema = new Schema({
     required: true,
     default: ["password"],
   },
+  google_id: {
+    type: String,
+    unique: true,
+    sparse: true, // Cho phép null cho những user login bằng password
+    index: true,
+  },
 
   // Theo dõi thời gian
   create_at: {
