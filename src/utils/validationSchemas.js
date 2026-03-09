@@ -210,6 +210,10 @@ const generateTemplateSchema = z.object({
   language: z.enum(["vi", "en"]).default("vi"),
 });
 
+const googleLoginSchema = z.object({
+  idToken: z.string().min(1, "ID Token là bắt buộc"),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -231,4 +235,5 @@ module.exports = {
   assignCardMemberSchema,
   removeCardMemberSchema,
   generateTemplateSchema,
+  googleLoginSchema,
 };

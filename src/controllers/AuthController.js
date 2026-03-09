@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
-const { z } = require('zod');
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const User = require('../models/User.model');
-const errorHandler = require('../middlewares/errorMiddleware');
-const { registerSchema, loginSchema } = require('../utils/validationSchemas');
+const { registerSchema, loginSchema, googleLoginSchema } = require('../utils/validationSchemas');
+
 
 // Tạo JWT
 const signToken = (userId) => {
@@ -69,7 +70,7 @@ module.exports.register = async (req, res, next) => {
         // Gửi token về client
         sendTokenResponse(newUser, 201, res);
     }
-    catch(error) {
+    catch (error) {
         next(error);
     }
 }
@@ -126,6 +127,75 @@ module.exports.logout = async (req, res, next) => {
             success: true,
             message: 'Đăng xuất thành công',
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Đăng nhập bằng Google
+module.exports.googleLogin = async (req, res, next) => {
+    try {
+        const { idToken } = googleLoginSchema.parse(req.body);
+
+        // Verify token từ Google
+        const ticket = await client.verifyIdToken({
+            idToken: idToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        const { sub: googleId, email, name, picture } = payload;
+
+        // Tìm User trong DB
+        let user = await User.findOne({
+            $or: [
+                { google_id: googleId },
+                { email: email }
+            ]
+        });
+
+        if (user) {
+            // Trường hợp user đã tồn tại (login password hoặc login google trước đó)
+            let updated = false;
+
+            // Nếu user chưa có google_id (tức là đăng ký password trước đó bằng cùng email)
+            if (!user.google_id) {
+                user.google_id = googleId;
+                updated = true;
+            }
+
+            // Thêm provider google nếu chưa có
+            if (!user.providers.includes('google')) {
+                user.providers.push('google');
+                updated = true;
+            }
+
+            if (updated) {
+                await user.save({ validateBeforeSave: false });
+            }
+        } else {
+            // Trường hợp user mới hoàn toàn
+            user = new User({
+                full_name: name,
+                email: email,
+                google_id: googleId,
+                providers: ['google', 'password'],
+                avatar: {
+                    url: picture,
+                },
+                last_logged: Date.now(),
+            });
+
+            await user.save({ validateBeforeSave: false });
+        }
+
+        // Cập nhật thời gian đăng nhập cuối
+        user.last_logged = Date.now();
+        await user.save({ validateBeforeSave: false });
+
+        // Trả về token
+        sendTokenResponse(user, 200, res);
+
     } catch (error) {
         next(error);
     }
