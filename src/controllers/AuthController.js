@@ -63,6 +63,10 @@ module.exports.register = async (req, res, next) => {
         // Tạo người dùng mới
         const newUser = new User({
             ...validatedData,
+            avatar: {
+                url: `https://ui-avatars.com/api/?name=${validatedData.full_name}&background=random`,
+                public_id: null,
+            },
             providers: ['password'], // Bời vì đây là đăng ký bằng email/password - Mặc định là 'password'
         });
         await newUser.save();
@@ -182,6 +186,7 @@ module.exports.googleLogin = async (req, res, next) => {
                 providers: ['google', 'password'],
                 avatar: {
                     url: picture,
+                    public_id: null,
                 },
                 last_logged: Date.now(),
             });
