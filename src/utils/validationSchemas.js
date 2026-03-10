@@ -214,6 +214,10 @@ const googleLoginSchema = z.object({
   idToken: z.string().min(1, "ID Token là bắt buộc"),
 });
 
+const analyzeBoardSchema = z.object({
+  query: z.string().trim().min(1, "Câu hỏi không được để trống").max(1000, "Câu hỏi không quá 1000 ký tự"),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -236,4 +240,5 @@ module.exports = {
   removeCardMemberSchema,
   generateTemplateSchema,
   googleLoginSchema,
+  analyzeBoardSchema,
 };
