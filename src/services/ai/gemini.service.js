@@ -41,7 +41,7 @@ const generateTemplateFromAI = async (userPrompt, language = "vi") => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash",
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -67,9 +67,15 @@ const generateTemplateFromAI = async (userPrompt, language = "vi") => {
 
     // Phân biệt các loại lỗi để FE xử lý tốt hơn
     if (error.status === 429) {
-      const rateLimitErr = new Error("AI đang quá tải, vui lòng thử lại sau 1 phút.");
+      const rateLimitErr = new Error("AI đang quá tải hoặc hết hạn mức, vui lòng thử lại sau 1 phút.");
       rateLimitErr.statusCode = 429;
       throw rateLimitErr;
+    }
+
+    if (error.status === 503) {
+      const overloadErr = new Error("Hệ thống AI của Google hiện đang quá tải. Vui lòng thử lại sau ít phút.");
+      overloadErr.statusCode = 503;
+      throw overloadErr;
     }
 
     if (error.status === 403) {
@@ -84,6 +90,56 @@ const generateTemplateFromAI = async (userPrompt, language = "vi") => {
   }
 };
 
+const analyzeBoardData = async (boardData, userQuery) => {
+  const systemPrompt = `
+    Bạn là một trợ lý quản lý dự án thông minh chuyên phân tích bảng Kanban/Trello.
+    Dưới đây là cấu trúc dữ liệu hiện tại của dự án dưới dạng JSON:
+    
+    ${JSON.stringify(boardData)}
+    
+    Dựa CHỈ VÀO dữ liệu trên, hãy trả lời câu hỏi sau của người dùng một cách chính xác, ngắn gọn và hữu ích.
+    Câu hỏi: "${userQuery}"
+    
+    Yêu cầu định dạng:
+    - Trả lời bằng tiếng Việt.
+    - Dùng Markdown để trình bày (in đậm, danh sách bullet, emoji...).
+    - Phân tích và đưa ra các con số thống kê nếu phù hợp (tổng số thẻ đang làm, trễ hạn, đã xong...).
+    - Nếu câu hỏi không liên quan đến dự án, lịch sự nhắc nhở người dùng quay lại chủ đề chính.
+    - Tuyệt đối không bịa ra dữ liệu không có trong JSON.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: userQuery,
+      config: {
+        systemInstruction: systemPrompt,
+      }
+    });
+
+    return response.text;
+  } catch (error) {
+    console.error("[Gemini Service Error (Analyze)]: ", error);
+
+    if (error.status === 429) {
+      const rateLimitErr = new Error("AI đang bận hoặc hết hạn mức miễn phí, vui lòng thử lại sau 1 phút.");
+      rateLimitErr.statusCode = 429;
+      throw rateLimitErr;
+    }
+
+    if (error.status === 503) {
+      const overloadErr = new Error("Hệ thống AI của Google hiện đang quá tải. Vui lòng thử lại sau ít phút.");
+      overloadErr.statusCode = 503;
+      throw overloadErr;
+    }
+
+    const generalErr = new Error("Đã có lỗi xảy ra khi xử lý AI. Vui lòng thử lại.");
+    generalErr.statusCode = 500;
+    throw generalErr;
+  }
+};
+
 module.exports = {
-  generateTemplateFromAI
+  generateTemplateFromAI,
+  analyzeBoardData
 };
