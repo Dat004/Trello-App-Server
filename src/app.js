@@ -5,17 +5,17 @@ const morgan = require('morgan');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 
+// Load environment variables
+dotenv.config();
+
 // CORS options
 const corsOptions = {
   origin: process.env.CLIENT_URL,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+  allowedHeaders: ["Content-Type", "Authorization", "x-socket-id"],
   credentials: true,
   optionsSuccessStatus: 204,
 };
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 
