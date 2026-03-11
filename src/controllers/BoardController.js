@@ -169,8 +169,8 @@ module.exports.getBoardsByWorkspace = async (req, res, next) => {
     const { workspaceId } = req.params;
 
     // Validate workspaceId
-    if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
-      const error = new Error("Workspace ID không hợp lệ");
+    if (!workspaceId) {
+      const error = new Error("Không tìm thấy workspace id");
       error.statusCode = 400;
       return next(error);
     }
@@ -199,8 +199,8 @@ module.exports.getBoardById = async (req, res, next) => {
   try {
     const { boardId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(boardId)) {
-      const error = new Error("Board ID không hợp lệ");
+    if (!boardId) {
+      const error = new Error("Không tìm thấy board id");
       error.statusCode = 400;
       return next(error);
     }
