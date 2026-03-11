@@ -218,6 +218,11 @@ const analyzeBoardSchema = z.object({
   query: z.string().trim().min(1, "Câu hỏi không được để trống").max(1000, "Câu hỏi không quá 1000 ký tự"),
 });
 
+const searchSchema = z.object({
+  q: z.string().optional().default(""),
+  limit: z.coerce.number().int().positive().optional().default(5),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -241,4 +246,5 @@ module.exports = {
   generateTemplateSchema,
   googleLoginSchema,
   analyzeBoardSchema,
+  searchSchema,
 };
