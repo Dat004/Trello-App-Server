@@ -94,11 +94,12 @@ const inviteMemberSchema = z.object({
   message: z.string().trim().max(200, "Lời nhắn không quá 200 ký tự").optional(),
 });
 
-const objectJd = z
-  .string()
-  .refine((val) => mongoose.Types.ObjectId.isValid(val), {
+const objectJd = z.preprocess(
+  (val) => (val === "" || val === "undefined" || val === "null" ? undefined : val),
+  z.string().trim().refine((val) => mongoose.Types.ObjectId.isValid(val), {
     message: "ID không hợp lệ",
-  });
+  }).optional().nullable()
+);
 
 const updateMemberRole = z.object({
   member_id: objectJd,

@@ -69,8 +69,8 @@ module.exports.getTemplateById = async (req, res, next) => {
     try {
         const { templateId } = req.params;
 
-        if (!mongoose.Types.ObjectId.isValid(templateId)) {
-            const error = new Error("Template ID không hợp lệ");
+        if (!templateId) {
+            const error = new Error("Không tìm thấy template id");
             error.statusCode = 400;
             return next(error);
         }
@@ -103,8 +103,8 @@ module.exports.createBoardFromTemplate = async (req, res, next) => {
         const validatedData = createBoardFromTemplateSchema.parse(req.body);
 
         // Validate templateId
-        if (!mongoose.Types.ObjectId.isValid(templateId)) {
-            const error = new Error("Template ID không hợp lệ");
+        if (!templateId) {
+            const error = new Error("Không tìm thấy template id");
             error.statusCode = 400;
             return next(error);
         }
@@ -135,8 +135,8 @@ module.exports.createBoardFromTemplate = async (req, res, next) => {
 
         // Nếu có workspaceId, gán board vào workspace
         if (validatedData.workspaceId) {
-            if (!mongoose.Types.ObjectId.isValid(validatedData.workspaceId)) {
-                const error = new Error("Workspace ID không hợp lệ");
+            if (!validatedData.workspaceId) {
+                const error = new Error("Không tìm thấy workspace id");
                 error.statusCode = 400;
                 return next(error);
             }
