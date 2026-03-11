@@ -1,16 +1,17 @@
+const notificationRouter = require('./notifications');
 const attachmentRouter = require('./attachment');
 const workspaceRouter = require('./workspaces');
 const favoritesRouter = require('./favorites');
 const activityRouter = require('./activities');
 const templateRouter = require('./templates');
 const commentRouter = require('./comment');
+const searchRouter = require('./search');
 const uploadRouter = require('./upload');
 const boardRouter = require('./boards');
 const cardRouter = require('./card');
 const listRouter = require('./list');
 const authRouter = require('./auth');
 const meRouter = require('./users');
-const notificationRouter = require('./notifications');
 const aiRouter = require('./ai');
 
 function router(app) {
@@ -40,6 +41,9 @@ function router(app) {
 
     // Template routes
     app.use('/api/templates', templateRouter);
+
+    // Search routes
+    app.use('/api/search', searchRouter);
 
     // Board routes
     app.use('/api/boards', boardRouter);
