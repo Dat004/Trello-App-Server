@@ -225,18 +225,28 @@ module.exports.getBoardById = async (req, res, next) => {
       m.user && m.user._id.equals(req.user._id)
     );
 
-    // Check workspace membership if board belongs to workspace
-    let isWorkspaceMember = false;
-    if (board.workspace && board.visibility === "workspace") {
+    // Check workspace membership and admin rights if board belongs to workspace
+    let isWorkspaceAdmin = false;
+    let isWorkspaceMemberAccess = false;
+
+    if (board.workspace) {
       const workspace = await Workspace.findById(board.workspace);
       if (workspace) {
-        isWorkspaceMember = workspace.members.some((m) =>
-          m.user.equals(req.user._id)
-        ) || workspace.owner.equals(req.user._id);
+        const isWsOwner = workspace.owner.equals(req.user._id);
+        const wsMember = workspace.members.find(m => m.user.equals(req.user._id));
+        const isWsAdmin = wsMember?.role === "admin";
+
+        // Workspace Admin/Owner luôn có quyền xem (Audit/Oversight rights)
+        isWorkspaceAdmin = isWsOwner || isWsAdmin;
+
+        // Thành viên bình thường chỉ có quyền nếu visibility là 'workspace'
+        if (board.visibility === "workspace") {
+          isWorkspaceMemberAccess = !!wsMember || isWsOwner;
+        }
       }
     }
 
-    const hasAccess = isOwner || isBoardMember || isWorkspaceMember || board.visibility === 'public';
+    const hasAccess = isOwner || isBoardMember || isWorkspaceAdmin || isWorkspaceMemberAccess || board.visibility === 'public';
 
     // Nếu user không có quyền truy cập, chỉ trả về thông tin cơ bản
     if (!hasAccess) {
@@ -450,8 +460,8 @@ module.exports.getBoardById = async (req, res, next) => {
       message: "Lấy chi tiết board thành công",
       data: {
         board: fullBoard,
-        is_member: isMember,
-        read_only: !isMember
+        is_member: isMember || hasAccess,
+        read_only: !isMember || !hasAccess
       },
     });
   } catch (error) {

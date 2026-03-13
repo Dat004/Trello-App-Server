@@ -68,13 +68,18 @@ const defineAbilitiesFor = (user, context = {}) => {
         // --- VISIBILITY CHECK ---
         let canViewBoard = false;
 
+        // Board Owner luôn có quyền xem board của mình
+        const isBoardOwner = user && board.owner && board.owner.equals(userId);
+        if (isBoardOwner) {
+            canViewBoard = true;
+        }
+
         // 1. Public Board
         if (board.visibility === 'public') {
             canViewBoard = true;
         }
         // 2. Workspace Visibility (Thành viên của workspace)
         else if (board.visibility === 'workspace') {
-            // Kiểm tra xem user có phải là thành viên của workspace này không
             if (workspace && isWsMember(workspace)) {
                 canViewBoard = true;
             }
@@ -109,7 +114,14 @@ const defineAbilitiesFor = (user, context = {}) => {
             if (board.owner && board.owner.equals(userId)) isEffectiveAdmin = true;
 
             // 3. Workspace Admin/Owner (Inheritance)
-            if (workspace && isWsAdminOrOwner(workspace)) isEffectiveAdmin = true;
+            // Chỉ kế thừa quyền admin nếu:
+            // - Board KHÔNG phải private, HOẶC
+            // - WS Admin cũng là board member
+            if (workspace && isWsAdminOrOwner(workspace)) {
+                if (board.visibility !== 'private' || bMember) {
+                    isEffectiveAdmin = true;
+                }
+            }
 
             // Kiểm tra quyền thành viên hoặc admin
             const isMemberOrAdmin = (bMember || isEffectiveAdmin);

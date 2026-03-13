@@ -13,6 +13,7 @@ const {
     logBoardJoinRequestRejected,
     logMemberRoleChanged
 } = require("../activity/log");
+const { generateNotificationsForActivity } = require("../notification/create");
 
 // Invite multiple users to the board
 const inviteMembers = async (board, user, emails, role, message = "") => {
