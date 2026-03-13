@@ -16,7 +16,7 @@ module.exports.generateTemplate = async (req, res, next) => {
 
         // Gọi service AI để tạo nội dung template
         const aiResult = await generateTemplateFromAI(prompt, language);
-        const { template: aiTemplate, usage } = aiResult;
+        const { template: aiTemplate, usage, model } = aiResult;
 
         // Lưu dưới dạng template cá nhân (is_system: false) của người dùng
         const newTemplateData = {
@@ -40,7 +40,7 @@ module.exports.generateTemplate = async (req, res, next) => {
             is_ai_generated: true,
             ai_metadata: {
                 prompt,
-                model: "gemini-2.5-flash",
+                model: model || "gemini-2.0-flash",
                 usage,
                 generated_at: new Date()
             }

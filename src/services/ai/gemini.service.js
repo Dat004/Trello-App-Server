@@ -2,6 +2,14 @@ const { GoogleGenAI } = require("@google/genai");
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Hàm lấy danh sách các model để thử, ưu tiên cấu hình từ .env
+const getModelsToTry = () => {
+  const preferred = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const defaults = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"];
+  // Tránh lặp lại model
+  return [...new Set([preferred, ...defaults])];
+};
+
 const generateTemplateFromAI = async (userPrompt, language = "vi") => {
   const systemPrompt = `
     Bạn là một chuyên gia quản lý dự án. Khi nhận được mô tả, hãy tạo ra một template board Kanban chuyên nghiệp.
@@ -39,55 +47,63 @@ const generateTemplateFromAI = async (userPrompt, language = "vi") => {
     7. Đảm bảo tính hợp lệ của JSON.
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-      }
-    });
+  const modelsToTry = getModelsToTry();
+  let lastError;
 
-    const text = response.text;
+  for (const model of modelsToTry) {
+    try {
+      console.log(`[Gemini Service] Attempting to generate template with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+        }
+      });
 
-    // Parse JSON
-    const templateData = JSON.parse(text);
+      const text = response.text;
+      const templateData = JSON.parse(text);
 
-    return {
-      template: templateData,
-      usage: {
-        prompt_tokens: response.usageMetadata?.promptTokenCount || 0,
-        completion_tokens: response.usageMetadata?.candidatesTokenCount || 0,
-        total_tokens: response.usageMetadata?.totalTokenCount || 0
-      }
-    };
-  } catch (error) {
-    console.error("[Gemini Service Error]:", error);
-
-    // Phân biệt các loại lỗi để FE xử lý tốt hơn
-    if (error.status === 429) {
-      const rateLimitErr = new Error("AI đang quá tải hoặc hết hạn mức, vui lòng thử lại sau 1 phút.");
-      rateLimitErr.statusCode = 429;
-      throw rateLimitErr;
+      return {
+        template: templateData,
+        model: model,
+        usage: {
+          prompt_tokens: response.usageMetadata?.promptTokenCount || 0,
+          completion_tokens: response.usageMetadata?.candidatesTokenCount || 0,
+          total_tokens: response.usageMetadata?.totalTokenCount || 0
+        }
+      };
+    } catch (error) {
+      console.warn(`[Gemini Service Warning] Model ${model} failed: ${error.status || error.message}. Trying next model...`);
+      lastError = error;
     }
-
-    if (error.status === 503) {
-      const overloadErr = new Error("Hệ thống AI của Google hiện đang quá tải. Vui lòng thử lại sau ít phút.");
-      overloadErr.statusCode = 503;
-      throw overloadErr;
-    }
-
-    if (error.status === 403) {
-      const authErr = new Error("API Key AI không hợp lệ hoặc chưa được kích hoạt.");
-      authErr.statusCode = 503;
-      throw authErr;
-    }
-
-    const generalErr = new Error("Không thể tạo template bằng AI. Vui lòng thử lại sau.");
-    generalErr.statusCode = 500;
-    throw generalErr;
   }
+
+  console.error("[Gemini Service Error]: All models failed.", lastError);
+
+  // Phân biệt các loại lỗi để FE xử lý tốt hơn
+  if (lastError && lastError.status === 429) {
+    const rateLimitErr = new Error("AI đang quá tải hoặc hết hạn mức, vui lòng thử lại sau 1 phút.");
+    rateLimitErr.statusCode = 429;
+    throw rateLimitErr;
+  }
+
+  if (lastError && lastError.status === 503) {
+    const overloadErr = new Error("Hệ thống AI của Google hiện đang quá tải. Vui lòng thử lại sau ít phút.");
+    overloadErr.statusCode = 503;
+    throw overloadErr;
+  }
+
+  if (lastError && lastError.status === 403) {
+    const authErr = new Error("API Key AI không hợp lệ hoặc chưa được kích hoạt.");
+    authErr.statusCode = 503;
+    throw authErr;
+  }
+
+  const generalErr = new Error("Không thể tạo template bằng AI. Vui lòng thử lại sau.");
+  generalErr.statusCode = 500;
+  throw generalErr;
 };
 
 const analyzeBoardData = async (boardData, userQuery) => {
@@ -108,35 +124,44 @@ const analyzeBoardData = async (boardData, userQuery) => {
     - Tuyệt đối không bịa ra dữ liệu không có trong JSON.
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: userQuery,
-      config: {
-        systemInstruction: systemPrompt,
-      }
-    });
+  const modelsToTry = getModelsToTry();
+  let lastError;
 
-    return response.text;
-  } catch (error) {
-    console.error("[Gemini Service Error (Analyze)]: ", error);
+  for (const model of modelsToTry) {
+    try {
+      console.log(`[Gemini Service] Attempting to analyze board with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: userQuery,
+        config: {
+          systemInstruction: systemPrompt,
+        }
+      });
 
-    if (error.status === 429) {
-      const rateLimitErr = new Error("AI đang bận hoặc hết hạn mức miễn phí, vui lòng thử lại sau 1 phút.");
-      rateLimitErr.statusCode = 429;
-      throw rateLimitErr;
+      return response.text;
+    } catch (error) {
+      console.warn(`[Gemini Service Warning] Model ${model} failed for analysis: ${error.status || error.message}. Trying next model...`);
+      lastError = error;
     }
-
-    if (error.status === 503) {
-      const overloadErr = new Error("Hệ thống AI của Google hiện đang quá tải. Vui lòng thử lại sau ít phút.");
-      overloadErr.statusCode = 503;
-      throw overloadErr;
-    }
-
-    const generalErr = new Error("Đã có lỗi xảy ra khi xử lý AI. Vui lòng thử lại.");
-    generalErr.statusCode = 500;
-    throw generalErr;
   }
+
+  console.error("[Gemini Service Error (Analyze)]: All models failed.", lastError);
+
+  if (lastError && lastError.status === 429) {
+    const rateLimitErr = new Error("AI đang bận hoặc hết hạn mức miễn phí, vui lòng thử lại sau 1 phút.");
+    rateLimitErr.statusCode = 429;
+    throw rateLimitErr;
+  }
+
+  if (lastError && lastError.status === 503) {
+    const overloadErr = new Error("Hệ thống AI của Google hiện đang quá tải. Vui lòng thử lại sau ít phút.");
+    overloadErr.statusCode = 503;
+    throw overloadErr;
+  }
+
+  const generalErr = new Error("Đã có lỗi xảy ra khi xử lý AI. Vui lòng thử lại.");
+  generalErr.statusCode = 500;
+  throw generalErr;
 };
 
 module.exports = {
