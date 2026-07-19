@@ -46,7 +46,7 @@ const sendNotificationEmail = async (user, notificationData) => {
   const cardTitle = card?.title || "Thẻ";
 
   if (cardId && boardId) {
-      redirectLink = `${baseUrl}/board/${boardId}?cardId=${cardId}`;
+      redirectLink = `${baseUrl}/board/${boardId}?card=${cardId}`;
       targetLabel = `Xem thẻ "${cardTitle}" →`;
   } else if (boardId) {
       redirectLink = `${baseUrl}/board/${boardId}`;
