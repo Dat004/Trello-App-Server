@@ -1,5 +1,6 @@
 const Board = require("../models/Board.model");
 const Card = require("../models/Card.model");
+const Workspace = require("../models/Workspace.model");
 // const User = require("../models/User.model");
 const { searchSchema } = require("../utils/validationSchemas");
 
@@ -19,19 +20,39 @@ module.exports.globalSearch = async (req, res, next) => {
             });
         }
 
-        // Regex tìm kiếm - không phân biệt hoa thường, hỗ trợ Unicode
-        const searchRegex = new RegExp(q, "i");
+        const escapedQuery = q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const searchRegex = new RegExp(escapedQuery, "i");
+
+        const [memberWorkspaces, adminWorkspaces] = await Promise.all([
+            Workspace.find({
+                deleted_at: null,
+                $or: [{ owner: userId }, { "members.user": userId }],
+            }).select("_id").lean(),
+            Workspace.find({
+                deleted_at: null,
+                $or: [
+                    { owner: userId },
+                    { members: { $elemMatch: { user: userId, role: "admin" } } },
+                ],
+            }).select("_id").lean(),
+        ]);
+
+        const memberWorkspaceIds = memberWorkspaces.map((workspace) => workspace._id);
+        const adminWorkspaceIds = adminWorkspaces.map((workspace) => workspace._id);
+        const accessibleBoardConditions = [
+            { owner: userId },
+            { "members.user": userId },
+            { visibility: "public" },
+            { visibility: "workspace", workspace: { $in: memberWorkspaceIds } },
+            { visibility: "private", workspace: { $in: adminWorkspaceIds } },
+        ];
 
         // Tìm Boards
         const boardsPromise = Board.find({
             deleted_at: null,
             archived: false,
             title: searchRegex,
-            $or: [
-                { owner: userId },
-                { "members.user": userId }, // Người dùng phải là member
-                { visibility: "public" }
-            ]
+            $or: accessibleBoardConditions,
         })
             .select("_id title color visibility")
             .limit(limit)
@@ -40,11 +61,8 @@ module.exports.globalSearch = async (req, res, next) => {
         // Tìm Cards
         const myBoardIdsPromise = Board.find({
             deleted_at: null,
-            $or: [
-                { owner: userId },
-                { "members.user": userId },
-                { visibility: "public" }
-            ]
+            archived: false,
+            $or: accessibleBoardConditions,
         }).select("_id").lean();
 
         /* 

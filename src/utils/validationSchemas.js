@@ -220,8 +220,8 @@ const analyzeBoardSchema = z.object({
 });
 
 const searchSchema = z.object({
-  q: z.string().optional().default(""),
-  limit: z.coerce.number().int().positive().optional().default(5),
+  q: z.string().trim().max(100, "Từ khóa tìm kiếm không quá 100 ký tự").optional().default(""),
+  limit: z.coerce.number().int().positive().max(20).optional().default(5),
 });
 
 module.exports = {
