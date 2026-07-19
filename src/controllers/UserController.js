@@ -1,6 +1,8 @@
 const cloudinary = require("cloudinary").v2;
 const User = require("../models/User.model");
 const Card = require("../models/Card.model");
+const Board = require("../models/Board.model");
+const Workspace = require("../models/Workspace.model");
 const {
   updateInfoSchema,
   updateSettingsSchema,
@@ -139,6 +141,83 @@ module.exports.getMyTasks = async (req, res, next) => {
       data: {
         tasks: taskData,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports.getMembershipDirectory = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const workspaces = await Workspace.find({
+      deleted_at: null,
+      $or: [{ owner: userId }, { "members.user": userId }],
+    })
+      .select("name color owner members")
+      .populate("owner", "_id full_name email avatar")
+      .populate("members.user", "_id full_name email avatar")
+      .sort({ name: 1 })
+      .lean();
+
+    const workspaceIds = workspaces.map((workspace) => workspace._id);
+    const boards = await Board.find({
+      workspace: { $in: workspaceIds },
+      deleted_at: null,
+      archived: false,
+    })
+      .select("workspace owner members.user")
+      .lean();
+
+    const boardCounts = new Map();
+    boards.forEach((board) => {
+      const memberIds = new Set([
+        String(board.owner),
+        ...board.members.map((member) => String(member.user)),
+      ]);
+      memberIds.forEach((memberId) => {
+        const key = `${board.workspace}:${memberId}`;
+        boardCounts.set(key, (boardCounts.get(key) || 0) + 1);
+      });
+    });
+
+    const directory = workspaces.map((workspace) => {
+      const membersById = new Map();
+      if (workspace.owner) {
+        membersById.set(String(workspace.owner._id), {
+          user: workspace.owner,
+          role: "owner",
+          joinedAt: null,
+        });
+      }
+      workspace.members.forEach((membership) => {
+        if (!membership.user) return;
+        const memberId = String(membership.user._id);
+        if (membersById.get(memberId)?.role === "owner") return;
+        membersById.set(memberId, membership);
+      });
+
+      return {
+        _id: workspace._id,
+        name: workspace.name,
+        color: workspace.color,
+        members: Array.from(membersById.values()).map((membership) => ({
+          _id: membership.user._id,
+          full_name: membership.user.full_name,
+          email: membership.user.email,
+          avatar: membership.user.avatar,
+          role: membership.role,
+          joinedAt: membership.joinedAt,
+          boardsCount:
+            boardCounts.get(`${workspace._id}:${membership.user._id}`) || 0,
+        })),
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy directory thành viên thành công",
+      data: { workspaces: directory },
     });
   } catch (error) {
     next(error);

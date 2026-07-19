@@ -13,6 +13,9 @@ router.patch('/me/info', protect, userController.updateInfo);
 // [GET] /api/users/me/tasks
 router.get('/me/tasks', protect, userController.getMyTasks);
 
+// [GET] /api/users/me/memberships/directory
+router.get('/me/memberships/directory', protect, userController.getMembershipDirectory);
+
 // [GET] /api/users/me
 router.get('/me', protect, userController.me);
 
