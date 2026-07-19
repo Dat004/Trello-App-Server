@@ -49,7 +49,6 @@ const UserSchema = new Schema({
     type: String,
     unique: true,
     sparse: true, // Cho phép null cho những user login bằng password
-    index: true,
   },
 
   // Theo dõi thời gian

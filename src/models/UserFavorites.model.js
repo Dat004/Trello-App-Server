@@ -7,7 +7,6 @@ const UserFavoritesSchema = new Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true,
-        index: true,
     },
     starred_workspaces: [
         {

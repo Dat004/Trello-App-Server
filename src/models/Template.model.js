@@ -60,7 +60,6 @@ const TemplateSchema = new Schema({
         trim: true,
         unique: true,
         maxlength: [100, 'Tên template không được vượt quá 100 ký tự'],
-        index: true
     },
 
     description: {
