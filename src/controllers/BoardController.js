@@ -138,6 +138,7 @@ module.exports.getMyBoards = async (req, res, next) => {
         }
       ],
       deleted_at: null,
+      archived: false,
     }).sort({ updated_at: -1 });
 
     await Board.populate(boards,
@@ -179,6 +180,7 @@ module.exports.getBoardsByWorkspace = async (req, res, next) => {
     const boards = await Board.find({
       workspace: workspaceId,
       deleted_at: null,
+      archived: false,
     })
       .populate("owner", "email full_name avatar.url")
       .populate("members.user", "email full_name avatar.url")
@@ -449,19 +451,24 @@ module.exports.getBoardById = async (req, res, next) => {
       },
     ]);
 
-    // isMember chỉ tính Board Member hoặc Owner (người có quyền Edit)
+    // Contract: is_member only describes actual board membership. read_only
+    // independently describes whether this caller may mutate board contents.
     const isMember = isOwner || isBoardMember;
-
-    // Read-only nếu không phải là member thực sự của board
-    // (Workspace member vẫn xem được nhưng read-only cho đến khi join)
+    const boardMember = board.members.find(
+      (member) => member.user && member.user._id.equals(req.user._id)
+    );
+    const isWritableBoardMember = isOwner || (boardMember && boardMember.role !== "viewer");
+    const hasInheritedAdminWrite =
+      isWorkspaceAdmin && (board.visibility !== "private" || isBoardMember);
+    const readOnly = !(isWritableBoardMember || hasInheritedAdminWrite);
 
     res.status(200).json({
       success: true,
       message: "Lấy chi tiết board thành công",
       data: {
         board: fullBoard,
-        is_member: isMember || hasAccess,
-        read_only: !isMember || !hasAccess
+        is_member: isMember,
+        read_only: readOnly
       },
     });
   } catch (error) {

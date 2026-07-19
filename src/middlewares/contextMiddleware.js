@@ -5,139 +5,115 @@ const Card = require("../models/Card.model");
 const Comment = require("../models/Comment.model");
 const Attachment = require("../models/Attachment.model");
 
-// Middleware to load context (Workspace, Board, List, Card, Comment, Attachment) based on ID params.
+const getParam = (params, names) => {
+    for (const name of names) {
+        if (params[name]) return params[name];
+    }
+    return null;
+};
+
+const notFound = (message) => {
+    const err = new Error(message);
+    err.statusCode = 404;
+    return err;
+};
+
+// Load and bind every explicitly nested resource to its parent. Returning 404 for
+// a mismatched chain avoids revealing whether an unrelated resource exists.
 const loadContext = async (req, res, next) => {
-    const { workspaceId, boardId, listId, cardId, commentId, attachmentId } = req.params;
+    const workspaceId = getParam(req.params, ["workspaceId", "workspace_id"]);
+    const boardId = getParam(req.params, ["boardId", "board_id"]);
+    const listId = getParam(req.params, ["listId", "list_id"]);
+    const cardId = getParam(req.params, ["cardId", "card_id"]);
+    const commentId = getParam(req.params, ["commentId", "comment_id"]);
+    const attachmentId = getParam(req.params, ["attachmentId", "attachment_id"]);
     req.context = {};
 
     try {
-        // 0. Load Attachment (deepest level for files)
-        if (attachmentId) {
-            const attachment = await Attachment.findOne({ _id: attachmentId, deleted_at: null });
-            if (!attachment) {
-                const err = new Error("Tệp đính kèm không tồn tại");
-                err.statusCode = 404;
-                return next(err);
-            }
-            req.context.attachment = attachment;
-            req.attachment = attachment;
+        let board = null;
+        let list = null;
+        let card = null;
 
-            // Populate card from attachment if missing in params
-            if (!cardId && attachment.card) {
-                const card = await Card.findOne({ _id: attachment.card, deleted_at: null });
-                if (card) {
-                    req.context.card = card;
-                    req.card = card;
-
-                    // Continue chain if needed
-                    if (!boardId && card.board) {
-                        const board = await Board.findOne({ _id: card.board, deleted_at: null });
-                        if (board) {
-                            req.context.board = board;
-                            req.board = board;
-                        }
-                    }
-                }
-            }
+        if (boardId) {
+            const boardQuery = { _id: boardId, deleted_at: null };
+            if (workspaceId) boardQuery.workspace = workspaceId;
+            board = await Board.findOne(boardQuery);
+            if (!board) return next(notFound("Bảng không tồn tại"));
         }
 
-        // 0.5. Load Comment (deepest level for text)
-        if (commentId) {
-            const comment = await Comment.findOne({ _id: commentId, deleted_at: null });
-            if (!comment) {
-                const err = new Error("Bình luận không tồn tại");
-                err.statusCode = 404;
-                return next(err);
-            }
-            req.context.comment = comment;
-            req.comment = comment;
-
-            // Populate card from comment if missing
-            if (!cardId && comment.card) {
-                const card = await Card.findOne({ _id: comment.card, deleted_at: null });
-                if (card) {
-                    req.context.card = card;
-                    req.card = card;
-
-                    // Continue chain if needed
-                    if (!boardId && card.board) {
-                        const board = await Board.findOne({ _id: card.board, deleted_at: null });
-                        if (board) {
-                            req.context.board = board;
-                            req.board = board;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 1. Load Card
-        if (cardId) {
-            const card = await Card.findOne({ _id: cardId, deleted_at: null });
-            if (!card) {
-                const err = new Error("Thẻ không tồn tại");
-                err.statusCode = 404;
-                return next(err);
-            }
-            req.context.card = card;
-            req.card = card;
-
-            // Load parent Board if not already implied
-            if (!boardId && card.board && !req.board) {
-                const board = await Board.findOne({ _id: card.board, deleted_at: null });
-                if (board) {
-                    req.context.board = board;
-                    req.board = board;
-                }
-            }
-        }
-
-        // 2. Load List
         if (listId) {
-            const list = await List.findOne({ _id: listId, deleted_at: null });
-            if (!list) {
-                const err = new Error("Danh sách không tồn tại");
-                err.statusCode = 404;
-                return next(err);
+            const listQuery = { _id: listId, deleted_at: null };
+            if (boardId) listQuery.board = boardId;
+            list = await List.findOne(listQuery);
+            if (!list) return next(notFound("Danh sách không tồn tại"));
+        }
+
+        if (cardId) {
+            const cardQuery = { _id: cardId, deleted_at: null };
+            if (boardId) cardQuery.board = boardId;
+            if (listId) cardQuery.list = listId;
+            card = await Card.findOne(cardQuery);
+            if (!card) return next(notFound("Thẻ không tồn tại"));
+        }
+
+        if (!card && (commentId || attachmentId)) {
+            const Resource = commentId ? Comment : Attachment;
+            const resourceId = commentId || attachmentId;
+            const resource = await Resource.findOne({ _id: resourceId, deleted_at: null });
+            if (!resource) {
+                return next(notFound(commentId ? "Bình luận không tồn tại" : "Tệp đính kèm không tồn tại"));
             }
+            const parentCardQuery = { _id: resource.card, deleted_at: null };
+            if (boardId) parentCardQuery.board = boardId;
+            card = await Card.findOne(parentCardQuery);
+            if (!card) return next(notFound("Thẻ không tồn tại"));
+        }
+
+        if (!board) {
+            const parentBoardId = (card && card.board) || (list && list.board);
+            if (parentBoardId) {
+                board = await Board.findOne({ _id: parentBoardId, deleted_at: null });
+                if (!board) return next(notFound("Bảng không tồn tại"));
+            }
+        }
+
+        if (list) {
             req.context.list = list;
             req.list = list;
-
-            if (!boardId && list.board && !req.board) {
-                const board = await Board.findOne({ _id: list.board, deleted_at: null });
-                if (board) {
-                    req.context.board = board;
-                    req.board = board;
-                }
-            }
         }
-
-        // 3. Load Board (if params exist or explicitly fetched above)
-        if (boardId && !req.board) {
-            const board = await Board.findOne({ _id: boardId, deleted_at: null });
-            if (!board) {
-                const err = new Error("Bảng không tồn tại");
-                err.statusCode = 404;
-                return next(err);
-            }
+        if (card) {
+            req.context.card = card;
+            req.card = card;
+        }
+        if (board) {
             req.context.board = board;
             req.board = board;
         }
 
-        // 4. Load Workspace
-        if (req.board && req.board.workspace && !workspaceId) {
-            const workspace = await Workspace.findOne({ _id: req.board.workspace, deleted_at: null });
-            if (workspace) {
-                req.context.workspace = workspace;
-                req.workspace = workspace;
-            }
-        } else if (workspaceId) {
-            const workspace = await Workspace.findOne({ _id: workspaceId, deleted_at: null });
-            if (!workspace) {
-                const err = new Error("Workspace không tồn tại");
-                err.statusCode = 404;
-                return next(err);
-            }
+        if (commentId) {
+            const commentQuery = { _id: commentId, deleted_at: null };
+            if (cardId) commentQuery.card = cardId;
+            if (board) commentQuery.board = board._id;
+            const comment = await Comment.findOne(commentQuery);
+            if (!comment) return next(notFound("Bình luận không tồn tại"));
+            req.context.comment = comment;
+            req.comment = comment;
+        }
+
+        if (attachmentId) {
+            const attachmentQuery = { _id: attachmentId, deleted_at: null };
+            if (cardId) attachmentQuery.card = cardId;
+            if (board) attachmentQuery.board = board._id;
+            const attachment = await Attachment.findOne(attachmentQuery);
+            if (!attachment) return next(notFound("Tệp đính kèm không tồn tại"));
+            req.context.attachment = attachment;
+            req.attachment = attachment;
+        }
+
+        const resolvedWorkspaceId = workspaceId || (board && board.workspace);
+        if (resolvedWorkspaceId) {
+            const workspace = await Workspace.findOne({ _id: resolvedWorkspaceId, deleted_at: null });
+            if (!workspace) return next(notFound("Workspace không tồn tại"));
             req.context.workspace = workspace;
             req.workspace = workspace;
         }

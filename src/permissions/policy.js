@@ -37,13 +37,17 @@ const defineAbilitiesFor = (user, context = {}) => {
 
         // --- MEMBER ACTIONS ---
         if (user && isWsMember(workspace)) {
+            const wsMember = workspace.members.find(m => m.user.equals(userId));
+            const isWritableWsMember = wsMember && wsMember.role !== 'viewer';
+
             // Kiểm tra quyền tạo board
-            if (workspace.permissions && workspace.permissions.canCreateBoard === 'admin_member') {
+            if (isWritableWsMember && workspace.permissions?.canCreateBoard === 'admin_member') {
                 can.add(PERMISSIONS.WORKSPACE.CREATE_BOARD);
             }
 
             // Kiểm tra quyền mời thành viên
-            if (!workspace.permissions || workspace.permissions.canInviteMember === 'any') {
+            const invitePolicy = workspace.permissions?.canInviteMember || 'admin_only';
+            if (isWritableWsMember && invitePolicy === 'admin_member') {
                 can.add(PERMISSIONS.WORKSPACE.INVITE);
             }
 
@@ -124,7 +128,10 @@ const defineAbilitiesFor = (user, context = {}) => {
             }
 
             // Kiểm tra quyền thành viên hoặc admin
-            const isMemberOrAdmin = (bMember || isEffectiveAdmin);
+            // A viewer remains a board member for read access, but cannot mutate
+            // lists/cards/comments/attachments.
+            const isWritableMember = bMember && bMember.role !== 'viewer';
+            const isMemberOrAdmin = (isWritableMember || isEffectiveAdmin);
 
             if (isMemberOrAdmin) {
                 // LIST
@@ -168,7 +175,7 @@ const defineAbilitiesFor = (user, context = {}) => {
             }
 
             // 3. RESOURCE OWNERSHIP
-            if (comment && comment.author && comment.author.equals(userId)) {
+            if (isMemberOrAdmin && comment && comment.author && comment.author.equals(userId)) {
                 can.add(PERMISSIONS.COMMENT.UPDATE);
                 can.add(PERMISSIONS.COMMENT.DELETE);
             }

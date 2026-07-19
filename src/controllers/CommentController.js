@@ -26,6 +26,8 @@ module.exports.addComment = async (req, res, next) => {
     if (parent_comment) {
       const parentComment = await Comment.findOne({
         _id: parent_comment,
+        card: card._id,
+        board: card.board,
         deleted_at: null,
       });
 
@@ -157,6 +159,8 @@ module.exports.getThread = async (req, res, next) => {
         // Tìm direct replies của tầng này
         const found = await Comment.find({
           parent_comment: { $in: currentParentIds },
+          card: req.card._id,
+          board: req.board._id,
           deleted_at: null,
         })
           .sort({ created_at: 1 })
@@ -199,6 +203,8 @@ module.exports.getThread = async (req, res, next) => {
       // Chỉ lấy direct children (Lazy load)
       comments = await Comment.find({
         parent_comment: parentCommentId,
+        card: req.card._id,
+        board: req.board._id,
         deleted_at: null,
       })
         .sort({ created_at: 1 })
@@ -269,6 +275,8 @@ module.exports.destroyComment = async (req, res, next) => {
     while (currentParentIds.length > 0) {
       const children = await Comment.find({
         parent_comment: { $in: currentParentIds },
+        card: req.card._id,
+        board: req.board._id,
         deleted_at: null,
       }).select("_id");
 

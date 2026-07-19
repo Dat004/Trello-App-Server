@@ -15,7 +15,10 @@ const protect = async (req, res, next) => {
 
     try {
         // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+            algorithms: ['HS256'],
+            issuer: 'trello-api',
+        });
 
         // Tìm user theo ID từ token
         const currentUser = await User.findById(decoded.sub);

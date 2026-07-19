@@ -27,6 +27,20 @@ app.use(morgan('dev')); // HTTP request logger
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 app.use(cookieParser()); // Parse cookies
 
+// Cookie authentication needs an explicit cross-site request check in production
+// (the auth cookie uses SameSite=None there). Non-browser clients without Origin
+// remain supported.
+app.use('/api', (req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+
+  const origin = req.get('origin');
+  if (!origin || origin === process.env.CLIENT_URL) return next();
+
+  const error = new Error('Nguồn yêu cầu không hợp lệ');
+  error.statusCode = 403;
+  next(error);
+});
+
 // Simple route for testing
 app.get('/', (req, res) => {
   res.json({ message: 'Trello Clone API is running!' });
