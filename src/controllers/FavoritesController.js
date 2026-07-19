@@ -146,8 +146,16 @@ const getMyFavorites = async (req, res, next) => {
         const userId = req.user._id;
 
         const favorites = await UserFavorites.findOne({ user: userId })
-            .populate("starred_workspaces", "name description color")
-            .populate("starred_boards", "title description color workspace");
+            .populate({
+                path: "starred_workspaces",
+                match: { deleted_at: null },
+                select: "name description color",
+            })
+            .populate({
+                path: "starred_boards",
+                match: { deleted_at: null, archived: false },
+                select: "title description color workspace",
+            });
 
         if (!favorites) {
             return res.status(200).json({
@@ -162,8 +170,8 @@ const getMyFavorites = async (req, res, next) => {
         res.status(200).json({
             success: true,
             data: {
-                starred_workspaces: favorites.starred_workspaces,
-                starred_boards: favorites.starred_boards,
+                starred_workspaces: favorites.starred_workspaces.filter(Boolean),
+                starred_boards: favorites.starred_boards.filter(Boolean),
             },
         });
     } catch (error) {
