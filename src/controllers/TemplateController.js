@@ -78,7 +78,8 @@ module.exports.getTemplateById = async (req, res, next) => {
         const template = await Template.findOne({
             _id: templateId,
             is_active: true,
-        });
+            is_system: true,
+        }).select(Template.PUBLIC_TEMPLATE_SELECT || "-ai_metadata");
 
         if (!template) {
             const error = new Error("Template không tồn tại hoặc đã bị vô hiệu hóa");
@@ -118,6 +119,16 @@ module.exports.createBoardFromTemplate = async (req, res, next) => {
         if (!template) {
             const error = new Error("Template không tồn tại hoặc đã bị vô hiệu hóa");
             error.statusCode = 404;
+            return next(error);
+        }
+
+        // Personal / AI templates are only usable by their creator
+        if (
+            !template.is_system &&
+            (!template.created_by || !template.created_by.equals(req.user._id))
+        ) {
+            const error = new Error("Bạn không có quyền sử dụng template này");
+            error.statusCode = 403;
             return next(error);
         }
 

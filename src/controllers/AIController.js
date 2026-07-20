@@ -73,12 +73,15 @@ module.exports.generateTemplate = async (req, res, next) => {
             }
         });
 
-        // Trả về kết quả cho FE
+        // Trả về kết quả cho FE (không lộ prompt / token usage)
+        const templatePayload = savedTemplate.toObject();
+        delete templatePayload.ai_metadata;
+
         res.status(201).json({
             success: true,
             message: "Tạo template bằng AI thành công",
             data: {
-                template: savedTemplate
+                template: templatePayload
             }
         });
 

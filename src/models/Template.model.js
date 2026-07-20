@@ -181,26 +181,35 @@ TemplateSchema.methods.incrementUsage = async function () {
 
 // Static Methods
 
+const PUBLIC_TEMPLATE_FILTER = { is_active: true, is_system: true };
+const PUBLIC_TEMPLATE_SELECT = "-ai_metadata";
+
 // Lấy danh sách templates phổ biến - Mặc định 10 templates
 TemplateSchema.statics.getPopular = function (limit = 10) {
-    return this.find({ is_active: true, is_popular: true })
+    return this.find({ ...PUBLIC_TEMPLATE_FILTER, is_popular: true })
+        .select(PUBLIC_TEMPLATE_SELECT)
         .sort({ popularity_score: -1, usage_count: -1 })
         .limit(limit);
 };
 
 // Lấy templates theo category - Mặc định 20 templates
 TemplateSchema.statics.getByCategory = function (category, limit = 20) {
-    return this.find({ is_active: true, category })
+    return this.find({ ...PUBLIC_TEMPLATE_FILTER, category })
+        .select(PUBLIC_TEMPLATE_SELECT)
         .sort({ popularity_score: -1, usage_count: -1 })
         .limit(limit);
 };
 
 // Lấy tất cả templates active, sorted by popularity - Mặc định 50 templates
 TemplateSchema.statics.getAllActive = function (limit = 50) {
-    return this.find({ is_active: true })
+    return this.find(PUBLIC_TEMPLATE_FILTER)
+        .select(PUBLIC_TEMPLATE_SELECT)
         .sort({ is_popular: -1, popularity_score: -1, usage_count: -1 })
         .limit(limit);
 };
+
+TemplateSchema.statics.PUBLIC_TEMPLATE_FILTER = PUBLIC_TEMPLATE_FILTER;
+TemplateSchema.statics.PUBLIC_TEMPLATE_SELECT = PUBLIC_TEMPLATE_SELECT;
 
 // Indexing
 TemplateSchema.index({ category: 1, is_active: 1 });
