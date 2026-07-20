@@ -20,7 +20,9 @@ const {
   logMemberRemoved,
   logMemberAdded,
 } = require("../services/activity/log");
-
+const { defineAbilitiesFor } = require("../permissions/policy");
+const PERMISSIONS = require("../permissions/definitions");
+const { projectBoardForViewer } = require("../dto/privacy");
 module.exports.create = async (req, res, next) => {
   try {
     const { title, description, color, visibility, workspaceId } =
@@ -230,12 +232,13 @@ module.exports.getBoardById = async (req, res, next) => {
     // Check workspace membership and admin rights if board belongs to workspace
     let isWorkspaceAdmin = false;
     let isWorkspaceMemberAccess = false;
+    let workspaceDoc = null;
 
     if (board.workspace) {
-      const workspace = await Workspace.findById(board.workspace);
-      if (workspace) {
-        const isWsOwner = workspace.owner.equals(req.user._id);
-        const wsMember = workspace.members.find(m => m.user.equals(req.user._id));
+      workspaceDoc = await Workspace.findById(board.workspace);
+      if (workspaceDoc) {
+        const isWsOwner = workspaceDoc.owner.equals(req.user._id);
+        const wsMember = workspaceDoc.members.find(m => m.user.equals(req.user._id));
         const isWsAdmin = wsMember?.role === "admin";
 
         // Workspace Admin/Owner luôn có quyền xem (Audit/Oversight rights)
@@ -462,11 +465,20 @@ module.exports.getBoardById = async (req, res, next) => {
       isWorkspaceAdmin && (board.visibility !== "private" || isBoardMember);
     const readOnly = !(isWritableBoardMember || hasInheritedAdminWrite);
 
+    const abilities = defineAbilitiesFor(req.user, {
+      board,
+      workspace: workspaceDoc,
+    });
+    const canManageMembers = abilities.includes(PERMISSIONS.BOARD.MANAGE_MEMBERS);
+
     res.status(200).json({
       success: true,
       message: "Lấy chi tiết board thành công",
       data: {
-        board: fullBoard,
+        board: projectBoardForViewer(fullBoard, {
+          includeEmails: canManageMembers,
+          includeAdminFields: canManageMembers,
+        }),
         is_member: isMember,
         read_only: readOnly
       },

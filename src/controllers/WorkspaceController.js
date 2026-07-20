@@ -19,6 +19,9 @@ const {
   logBoardMovedToWorkspace,
   logBoardRemovedFromWorkspace,
 } = require("../services/activity/log");
+const { defineAbilitiesFor } = require("../permissions/policy");
+const PERMISSIONS = require("../permissions/definitions");
+const { projectWorkspaceForViewer } = require("../dto/privacy");
 
 // Tạo workspace mới
 module.exports.create = async (req, res, next) => {
@@ -169,7 +172,10 @@ module.exports.getWorkspaceById = async (req, res, next) => {
           $or: [{ visibility: 'public' }, { visibility: 'workspace' }] // Guest xem được public & workspace boards
         });
 
-        const workspaceData = workspace.toObject();
+        const workspaceData = projectWorkspaceForViewer(workspace, {
+          includeEmails: false,
+          includeAdminFields: false,
+        });
         workspaceData.board_count = boardCount;
 
         return res.status(200).json({
@@ -216,7 +222,12 @@ module.exports.getWorkspaceById = async (req, res, next) => {
       deleted_at: null,
     });
 
-    const workspaceData = workspace.toObject();
+    const abilities = defineAbilitiesFor(req.user, { workspace });
+    const canManageMembers = abilities.includes(PERMISSIONS.WORKSPACE.MANAGE_MEMBERS);
+    const workspaceData = projectWorkspaceForViewer(workspace, {
+      includeEmails: canManageMembers,
+      includeAdminFields: canManageMembers,
+    });
     workspaceData.board_count = boardCount;
 
     res.status(200).json({
@@ -224,7 +235,8 @@ module.exports.getWorkspaceById = async (req, res, next) => {
       message: "Lấy chi tiết workspace thành công",
       data: {
         workspace: workspaceData,
-        is_member: true
+        is_member: true,
+        read_only: memberRecord?.role === "viewer" && !isOwner,
       },
     });
   } catch (error) {
