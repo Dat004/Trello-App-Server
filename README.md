@@ -28,6 +28,8 @@ Configure `MONGO_URI`, a strong `JWT_SECRET`, `CLIENT_URL`, Google OAuth, Cloudi
 - `npm run dev` — run the API with Nodemon
 - `npm start` — run the API with Node.js
 - `npm test` — run the built-in Node.js test suite
+- `npm run seed:templates` — reset system board templates
+- `npm run seed:demo` — upsert owner/admin/member/viewer demo accounts and a sample board
 
 ## Security
 

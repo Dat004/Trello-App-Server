@@ -5,7 +5,9 @@
   "scripts": {
     "test": "node --test",
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "seed:templates": "node src/scripts/seedTemplates.js",
+    "seed:demo": "node src/scripts/seedDemo.js"
   },
   "author": "Alex Nguyen",
   "license": "ISC",
