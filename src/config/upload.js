@@ -17,6 +17,22 @@ module.exports.UPLOAD_INTENTS = {
   card_attachment: {
     folder: (cardId) => `cards/${cardId}/attachments`,
     resource_type: "auto",
+    allowedFormats: [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "gif",
+      "pdf",
+      "doc",
+      "docx",
+      "xls",
+      "xlsx",
+      "txt",
+      "mp4",
+      "mov",
+      "zip",
+    ],
     maxSizeMB: 20,
   },
 };
