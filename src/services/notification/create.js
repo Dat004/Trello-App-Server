@@ -245,6 +245,28 @@ const generateNotificationsForActivity = async (activityDoc) => {
             }
         }
 
+        else if (action === ACTIVITY_ACTIONS.COMMENT_UPDATED) {
+            const comment = await Comment.findById(entity_id).select("card mentions");
+            if (comment?.card && comment.mentions?.length > 0) {
+                const card = await Card.findById(comment.card).select("title");
+                if (card) {
+                    comment.mentions.forEach((userId) => {
+                        notificationsToCreate.push({
+                            recipient: userId,
+                            sender: actor._id,
+                            type: action,
+                            workspace,
+                            board,
+                            card: card._id,
+                            entity_id,
+                            entity_type: ENTITY_TYPES.COMMENT,
+                            message: `đã nhắc đến bạn trong bình luận đã chỉnh sửa tại thẻ "${card.title}"`,
+                        });
+                    });
+                }
+            }
+        }
+
         // MEMBERSHIP (BOARDS & WORKSPACES)
         else if ([ACTIVITY_ACTIONS.MEMBER_ADDED, ACTIVITY_ACTIONS.MEMBER_REMOVED, ACTIVITY_ACTIONS.MEMBER_ROLE_CHANGED, ACTIVITY_ACTIONS.MEMBER_INVITED].includes(action)) {
             const isBoard = entity_type === ENTITY_TYPES.BOARD;

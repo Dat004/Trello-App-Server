@@ -2,8 +2,23 @@ const Comment = require("../models/Comment.model");
 const { emitToRoom } = require("../utils/socketHelper");
 const {
   logCommentCreated,
+  logCommentUpdated,
   logCommentDeleted,
 } = require("../services/activity/log");
+
+const sanitizeMentions = (mentions, board) => {
+  if (!Array.isArray(mentions) || mentions.length === 0) return [];
+
+  const memberIds = new Set(
+    (board.members || []).map((member) => member.user.toString())
+  );
+  if (board.owner) {
+    memberIds.add(board.owner.toString());
+  }
+
+  const unique = [...new Set(mentions.map((id) => id?.toString()).filter(Boolean))];
+  return unique.filter((id) => memberIds.has(id));
+};
 
 module.exports.addComment = async (req, res, next) => {
   try {
@@ -16,7 +31,9 @@ module.exports.addComment = async (req, res, next) => {
     }
 
     const card = req.card;
-    const workspaceId = req.board.workspace;
+    const board = req.board;
+    const workspaceId = board.workspace;
+    const validMentions = sanitizeMentions(mentions, board);
 
     // Khởi tạo các trường thread
     let thread_id = null;
@@ -54,10 +71,11 @@ module.exports.addComment = async (req, res, next) => {
       thread_id,
       parent_comment: parent_comment || null,
       depth,
-      mentions,
+      mentions: validMentions,
     });
 
     await newComment.populate("author", "full_name avatar");
+    await newComment.populate("mentions", "full_name avatar");
 
     // Socket.io emit (Cách 2: Loại trừ người gửi nếu có socketId)
     emitToRoom({
@@ -68,7 +86,7 @@ module.exports.addComment = async (req, res, next) => {
     });
 
     // Log activity
-    logCommentCreated(newComment, card, req.board, req.user._id);
+    logCommentCreated(newComment, card, board, req.user._id);
 
     res.status(201).json({
       success: true,
@@ -294,7 +312,11 @@ module.exports.destroyComment = async (req, res, next) => {
     emitToRoom({
       room: `card:${comment.card}`,
       event: "comment-deleted",
-      data: { commentId: comment._id, deletedCount: idsToDelete.length },
+      data: {
+        commentId: comment._id,
+        parentId: comment.parent_comment,
+        deletedCount: idsToDelete.length,
+      },
       socketId: req.headers["x-socket-id"],
     });
 
@@ -305,6 +327,53 @@ module.exports.destroyComment = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `Đã xóa ${idsToDelete.length} comment(s)`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [PATCH] /api/boards/:boardId/cards/:cardId/comments/:commentId
+module.exports.updateComment = async (req, res, next) => {
+  try {
+    const { text, mentions } = req.body;
+    if (!text || text.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Nội dung comment không được rỗng",
+      });
+    }
+
+    const comment = req.comment;
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment không tồn tại",
+      });
+    }
+
+    comment.text = text.trim();
+    if (mentions !== undefined) {
+      comment.mentions = sanitizeMentions(mentions, req.board);
+    }
+    await comment.save();
+
+    await comment.populate("author", "full_name avatar");
+    await comment.populate("mentions", "full_name avatar");
+
+    emitToRoom({
+      room: `card:${comment.card}`,
+      event: "comment-updated",
+      data: comment,
+      socketId: req.headers["x-socket-id"],
+    });
+
+    logCommentUpdated(comment, req.card, req.board, req.user._id);
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật comment thành công",
+      data: { comment },
     });
   } catch (error) {
     next(error);

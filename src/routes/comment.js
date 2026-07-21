@@ -15,6 +15,14 @@ router.delete('/:commentId',
     CommentController.destroyComment
 );
 
+// [PATCH] /api/boards/:boardId/cards/:cardId/comments/:commentId
+router.patch('/:commentId',
+    protect,
+    loadContext,
+    authorize(PERMISSIONS.COMMENT.UPDATE),
+    CommentController.updateComment
+);
+
 // [POST] /api/boards/:boardId/cards/:cardId/comments/create
 router.post('/create',
     protect,
