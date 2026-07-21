@@ -6,7 +6,7 @@ const { searchSchema } = require("../utils/validationSchemas");
 
 module.exports.globalSearch = async (req, res, next) => {
     try {
-        const { q, limit } = searchSchema.parse(req.query);
+        const { q, limit, skip } = searchSchema.parse(req.query);
         const userId = req.user._id;
 
         if (!q.trim()) {
@@ -15,7 +15,14 @@ module.exports.globalSearch = async (req, res, next) => {
                 data: {
                     boards: [],
                     cards: [],
-                    members: []
+                    members: [],
+                    pagination: {
+                        skip: 0,
+                        limit,
+                        hasMoreBoards: false,
+                        hasMoreCards: false,
+                        nextSkip: 0,
+                    },
                 }
             });
         }
@@ -47,7 +54,6 @@ module.exports.globalSearch = async (req, res, next) => {
             { visibility: "private", workspace: { $in: adminWorkspaceIds } },
         ];
 
-        // Tìm Boards
         const boardsPromise = Board.find({
             deleted_at: null,
             archived: false,
@@ -55,39 +61,26 @@ module.exports.globalSearch = async (req, res, next) => {
             $or: accessibleBoardConditions,
         })
             .select("_id title color visibility")
-            .limit(limit)
+            .skip(skip)
+            .limit(limit + 1)
             .lean();
 
-        // Tìm Cards
         const myBoardIdsPromise = Board.find({
             deleted_at: null,
             archived: false,
             $or: accessibleBoardConditions,
         }).select("_id").lean();
 
-        /* 
-        // Tìm Members
-        const membersPromise = User.find({
-            $or: [
-                { full_name: searchRegex },
-                { email: searchRegex }
-            ]
-        })
-        .select("_id full_name email avatar")
-        .limit(limit)
-        .lean();
-        */
-
-        const [boards, myBoardNodes] = await Promise.all([
+        const [boardsRaw, myBoardNodes] = await Promise.all([
             boardsPromise,
             myBoardIdsPromise,
-            // membersPromise
         ]);
 
+        const hasMoreBoards = boardsRaw.length > limit;
+        const boards = hasMoreBoards ? boardsRaw.slice(0, limit) : boardsRaw;
         const myBoardIds = myBoardNodes.map(b => b._id);
 
-        // Tìm Cards dựa trên Board IDs đã lọc
-        const cards = await Card.find({
+        const cardsRaw = await Card.find({
             deleted_at: null,
             archived: false,
             board: { $in: myBoardIds },
@@ -95,8 +88,12 @@ module.exports.globalSearch = async (req, res, next) => {
         })
             .select("_id title board list description labels due_date")
             .populate("board", "title")
-            .limit(limit)
+            .skip(skip)
+            .limit(limit + 1)
             .lean();
+
+        const hasMoreCards = cardsRaw.length > limit;
+        const cards = hasMoreCards ? cardsRaw.slice(0, limit) : cardsRaw;
 
         const formattedCards = cards.map(card => ({
             _id: card._id,
@@ -108,22 +105,19 @@ module.exports.globalSearch = async (req, res, next) => {
             description: card.description ? true : false
         }));
 
-        // Trả về kết quả
         res.status(200).json({
             success: true,
             data: {
                 boards: boards.map(b => ({ ...b, type: "board" })),
                 cards: formattedCards,
-                members: []
-                /*
-                members: members.map(m => ({
-                    _id: m._id,
-                    displayName: m.full_name,
-                    avatar: m.avatar?.url,
-                    email: m.email,
-                    type: "member"
-                }))
-                */
+                members: [],
+                pagination: {
+                    skip,
+                    limit,
+                    hasMoreBoards,
+                    hasMoreCards,
+                    nextSkip: skip + limit,
+                },
             }
         });
 
