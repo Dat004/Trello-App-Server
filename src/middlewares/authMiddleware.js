@@ -21,9 +21,14 @@ const protect = async (req, res, next) => {
         });
 
         // Tìm user theo ID từ token
-        const currentUser = await User.findById(decoded.sub);
+        const currentUser = await User.findById(decoded.sub).select('+auth_version');
         if (!currentUser) {
             const err = new Error('Người dùng không tồn tại');
+            err.statusCode = 401;
+            return next(err);
+        }
+        if ((decoded.ver || 0) !== (currentUser.auth_version || 0)) {
+            const err = new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
             err.statusCode = 401;
             return next(err);
         }
@@ -33,6 +38,9 @@ const protect = async (req, res, next) => {
         next();
     }
     catch(error) {
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            error.statusCode = 401;
+        }
         return next(error);
     }
 };

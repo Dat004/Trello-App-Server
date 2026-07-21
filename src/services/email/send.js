@@ -28,6 +28,40 @@ const sendEmail = async ({ to, subject, html }) => {
     }
 };
 
+const escapeHtml = (value = "") =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+const sendPasswordResetEmail = async (user, rawToken) => {
+  const baseUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  const resetUrl = `${baseUrl}/reset-password/${encodeURIComponent(rawToken)}`;
+  const expiresInMinutes =
+    Number(process.env.PASSWORD_RESET_EXPIRES_MINUTES) || 30;
+
+  return sendEmail({
+    to: user.email,
+    subject: "[Trello] Đặt lại mật khẩu",
+    html: `
+      <div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;color:#172b4d">
+        <h2>Đặt lại mật khẩu</h2>
+        <p>Xin chào ${escapeHtml(user.full_name)},</p>
+        <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.</p>
+        <p>
+          <a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:#0c66e4;color:#fff;text-decoration:none;border-radius:6px">
+            Đặt lại mật khẩu
+          </a>
+        </p>
+        <p>Liên kết hết hạn sau ${expiresInMinutes} phút và chỉ sử dụng được một lần.</p>
+        <p>Nếu bạn không yêu cầu thay đổi này, hãy bỏ qua email.</p>
+      </div>
+    `,
+  });
+};
+
 const sendNotificationEmail = async (user, notificationData) => {
   const { message, sender, workspace, board, card } = notificationData;
   const baseUrl = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -139,5 +173,6 @@ const sendNotificationEmail = async (user, notificationData) => {
 
 module.exports = {
   sendEmail,
-  sendNotificationEmail
+  sendNotificationEmail,
+  sendPasswordResetEmail,
 };

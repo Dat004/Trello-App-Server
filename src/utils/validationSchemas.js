@@ -15,6 +15,40 @@ const loginSchema = z.object({
   password: z.string().min(6, "Mật khẩu phải ít nhất 6 ký tự"),
 });
 
+const passwordSchema = z
+  .string()
+  .min(8, "Mật khẩu phải có ít nhất 8 ký tự")
+  .max(128, "Mật khẩu không quá 128 ký tự")
+  .regex(/[a-z]/, "Mật khẩu phải có chữ thường")
+  .regex(/[A-Z]/, "Mật khẩu phải có chữ hoa")
+  .regex(/\d/, "Mật khẩu phải có chữ số");
+
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().email("Email không hợp lệ").toLowerCase(),
+});
+
+const resetPasswordSchema = z
+  .object({
+    token: z.string().trim().min(32, "Token đặt lại mật khẩu không hợp lệ"),
+    password: passwordSchema,
+    confirmPassword: passwordSchema,
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Mật khẩu xác nhận không khớp",
+    path: ["confirmPassword"],
+  });
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Mật khẩu hiện tại là bắt buộc").optional(),
+    password: passwordSchema,
+    confirmPassword: passwordSchema,
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Mật khẩu xác nhận không khớp",
+    path: ["confirmPassword"],
+  });
+
 const avatarSchema = z.object({
   url: z.string().url(),
   public_id: z.string().trim().nullable().optional(),
@@ -205,6 +239,31 @@ const removeCardMemberSchema = z.object({
   userId: objectJd,
 });
 
+const boardLabelSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Tên nhãn không được để trống")
+    .max(50, "Tên nhãn không quá 50 ký tự"),
+  color: z.string().trim().min(1, "Màu nhãn là bắt buộc"),
+});
+
+const updateBoardLabelSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Tên nhãn không được để trống")
+    .max(50, "Tên nhãn không quá 50 ký tự")
+    .optional(),
+  color: z.string().trim().min(1, "Màu nhãn là bắt buộc").optional(),
+}).refine((data) => data.name !== undefined || data.color !== undefined, {
+  message: "Cần ít nhất một trường để cập nhật",
+});
+
+const assignCardLabelSchema = z.object({
+  labelId: objectJd,
+});
+
 const generateTemplateSchema = z.object({
   prompt: z.string().trim().min(5, "Prompt phải có ít nhất 5 ký tự").max(500, "Prompt không quá 500 ký tự"),
   workspaceId: objectJd.optional(),
@@ -222,11 +281,15 @@ const analyzeBoardSchema = z.object({
 const searchSchema = z.object({
   q: z.string().trim().max(100, "Từ khóa tìm kiếm không quá 100 ký tự").optional().default(""),
   limit: z.coerce.number().int().positive().max(20).optional().default(5),
+  skip: z.coerce.number().int().min(0).optional().default(0),
 });
 
 module.exports = {
   registerSchema,
   loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  changePasswordSchema,
   updateInfoSchema,
   updateSettingsSchema,
   updateWorkspaceSchema,
@@ -244,6 +307,9 @@ module.exports = {
   getActivitiesSchema,
   assignCardMemberSchema,
   removeCardMemberSchema,
+  boardLabelSchema,
+  updateBoardLabelSchema,
+  assignCardLabelSchema,
   generateTemplateSchema,
   googleLoginSchema,
   analyzeBoardSchema,

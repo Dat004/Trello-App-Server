@@ -46,8 +46,11 @@ module.exports = {
                     algorithms: ["HS256"],
                     issuer: "trello-api",
                 });
-                const user = await User.findById(decoded.sub);
+                const user = await User.findById(decoded.sub).select("+auth_version");
                 if (!user) return next(new Error("Unauthorized"));
+                if ((decoded.ver || 0) !== (user.auth_version || 0)) {
+                    return next(new Error("Unauthorized"));
+                }
 
                 socket.user = user;
                 next();

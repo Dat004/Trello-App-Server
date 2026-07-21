@@ -65,6 +65,21 @@ const UserSchema = new Schema({
     type: Date,
     default: Date.now,
   },
+  password_reset_token: {
+    type: String,
+    select: false,
+    default: null,
+  },
+  password_reset_expires: {
+    type: Date,
+    select: false,
+    default: null,
+  },
+  auth_version: {
+    type: Number,
+    default: 0,
+    select: false,
+  },
 
   // Trạng thái online
   is_online: {
@@ -136,6 +151,10 @@ UserSchema.pre('save', async function () {
 UserSchema.methods.comparePassword = async function (candidatePassword) {
   if (!this.password) return false; // Không có password (login bằng Google)
   return await bcrypt.compare(candidatePassword, this.password);
+};
+
+UserSchema.methods.invalidateSessions = function () {
+  this.auth_version = (this.auth_version || 0) + 1;
 };
 
 module.exports = mongoose.model('User', UserSchema);
