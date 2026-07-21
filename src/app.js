@@ -8,9 +8,35 @@ const cookieParser = require('cookie-parser');
 // Load environment variables
 dotenv.config();
 
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  ...(process.env.CLIENT_URLS || "").split(","),
+]
+  .map((value) => value?.trim())
+  .filter(Boolean);
+
+const isLocalDevOrigin = (origin) => {
+  if (process.env.NODE_ENV === "production") return false;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+};
+
+const isAllowedOrigin = (origin) =>
+  !origin || allowedOrigins.includes(origin) || isLocalDevOrigin(origin);
+
 // CORS options
 const corsOptions = {
-  origin: process.env.CLIENT_URL,
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Not allowed by CORS"));
+  },
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
   allowedHeaders: ["Content-Type", "Authorization", "x-socket-id"],
   credentials: true,
@@ -29,12 +55,12 @@ app.use(cookieParser()); // Parse cookies
 
 // Cookie authentication needs an explicit cross-site request check in production
 // (the auth cookie uses SameSite=None there). Non-browser clients without Origin
-// remain supported.
+// remain supported. Localhost / 127.0.0.1 any port is allowed in development for Vite + Playwright.
 app.use('/api', (req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
 
   const origin = req.get('origin');
-  if (!origin || origin === process.env.CLIENT_URL) return next();
+  if (isAllowedOrigin(origin)) return next();
 
   const error = new Error('Nguồn yêu cầu không hợp lệ');
   error.statusCode = 403;

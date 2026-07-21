@@ -15,6 +15,14 @@ const meRouter = require('./users');
 const aiRouter = require('./ai');
 
 function router(app) {
+    app.get("/api/health", (_req, res) => {
+        res.status(200).json({
+            success: true,
+            message: "ok",
+            data: { status: "up" },
+        });
+    });
+
     // Attachment card routes
     app.use('/api/boards/:boardId/cards/:cardId/attachments', attachmentRouter)
 
