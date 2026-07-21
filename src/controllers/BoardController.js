@@ -9,7 +9,10 @@ const {
   boardSchema,
   inviteMemberSchema,
   updateBoardsSchema,
+  boardLabelSchema,
+  updateBoardLabelSchema,
 } = require("../utils/validationSchemas");
+const Card = require("../models/Card.model");
 const { emitToRoom } = require("../utils/socketHelper");
 const {
   logBoardCreated,
@@ -159,6 +162,49 @@ module.exports.getMyBoards = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Lấy danh sách board thành công",
+      data: { boards },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports.getArchivedBoards = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    const userWorkspaces = await Workspace.find({
+      $or: [{ owner: userId }, { "members.user": userId }],
+      deleted_at: null,
+    }).select("_id");
+
+    const workspaceIds = userWorkspaces.map((ws) => ws._id);
+
+    const boards = await Board.find({
+      $or: [
+        { owner: userId },
+        { workspace: null, "members.user": userId },
+        {
+          workspace: { $exists: true, $ne: null },
+          "members.user": userId,
+        },
+        {
+          workspace: { $in: workspaceIds },
+          visibility: "workspace",
+        },
+      ],
+      deleted_at: null,
+      archived: true,
+    }).sort({ updated_at: -1 });
+
+    await Board.populate(boards, {
+      path: "members.user",
+      select: "_id full_name avatar.url",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Lấy danh sách board đã lưu trữ thành công",
       data: { boards },
     });
   } catch (error) {
@@ -901,6 +947,165 @@ module.exports.getJoinRequests = async (req, res, next) => {
       success: true,
       message: "Lấy danh sách yêu cầu tham gia thành công",
       data: { requests: pendingRequests }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [POST] /api/boards/:boardId/labels
+module.exports.createLabel = async (req, res, next) => {
+  try {
+    const { name, color } = boardLabelSchema.parse(req.body);
+    const board = req.board;
+
+    const duplicate = board.labels?.some(
+      (label) => label.name.toLowerCase() === name.toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: "Nhãn với tên này đã tồn tại trên board",
+      });
+    }
+
+    board.labels.push({ name, color });
+    await board.save();
+
+    const label = board.labels[board.labels.length - 1];
+
+    emitToRoom({
+      room: `board:${board._id}`,
+      event: "board-label-created",
+      data: { label },
+      socketId: req.headers["x-socket-id"],
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Tạo nhãn thành công",
+      data: { label },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [PATCH] /api/boards/:boardId/labels/:labelId
+module.exports.updateLabel = async (req, res, next) => {
+  try {
+    const { name, color } = updateBoardLabelSchema.parse(req.body);
+    const { labelId } = req.params;
+    const board = req.board;
+
+    const label = board.labels?.id(labelId);
+    if (!label) {
+      return res.status(404).json({
+        success: false,
+        message: "Nhãn không tồn tại",
+      });
+    }
+
+    const oldName = label.name;
+    const oldColor = label.color;
+
+    if (name !== undefined) {
+      const duplicate = board.labels.some(
+        (item) =>
+          item._id.toString() !== labelId &&
+          item.name.toLowerCase() === name.toLowerCase()
+      );
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: "Nhãn với tên này đã tồn tại trên board",
+        });
+      }
+      label.name = name;
+    }
+    if (color !== undefined) {
+      label.color = color;
+    }
+
+    await board.save();
+
+    const newName = label.name;
+    const newColor = label.color;
+
+    if (oldName !== newName || oldColor !== newColor) {
+      await Card.updateMany(
+        {
+          board: board._id,
+          deleted_at: null,
+          "labels.name": oldName,
+        },
+        {
+          $set: {
+            "labels.$[elem].name": newName,
+            "labels.$[elem].color": newColor,
+          },
+        },
+        {
+          arrayFilters: [{ "elem.name": oldName }],
+        }
+      );
+    }
+
+    emitToRoom({
+      room: `board:${board._id}`,
+      event: "board-label-updated",
+      data: {
+        label,
+        oldName,
+        oldColor,
+      },
+      socketId: req.headers["x-socket-id"],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật nhãn thành công",
+      data: { label },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// [DELETE] /api/boards/:boardId/labels/:labelId
+module.exports.deleteLabel = async (req, res, next) => {
+  try {
+    const { labelId } = req.params;
+    const board = req.board;
+
+    const label = board.labels?.id(labelId);
+    if (!label) {
+      return res.status(404).json({
+        success: false,
+        message: "Nhãn không tồn tại",
+      });
+    }
+
+    const labelName = label.name;
+    label.deleteOne();
+    await board.save();
+
+    await Card.updateMany(
+      { board: board._id, deleted_at: null },
+      { $pull: { labels: { name: labelName } } }
+    );
+
+    emitToRoom({
+      room: `board:${board._id}`,
+      event: "board-label-deleted",
+      data: { labelId, labelName },
+      socketId: req.headers["x-socket-id"],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa nhãn thành công",
+      data: { labelId },
     });
   } catch (error) {
     next(error);

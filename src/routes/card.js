@@ -121,4 +121,22 @@ router.get(
   CardController.getCardMembers
 );
 
+// [POST] /api/boards/:boardId/lists/:listId/cards/:cardId/labels
+router.post(
+  "/:cardId/labels",
+  protect,
+  loadContext,
+  authorize(PERMISSIONS.CARD.UPDATE),
+  CardController.assignLabel
+);
+
+// [DELETE] /api/boards/:boardId/lists/:listId/cards/:cardId/labels/:labelId
+router.delete(
+  "/:cardId/labels/:labelId",
+  protect,
+  loadContext,
+  authorize(PERMISSIONS.CARD.UPDATE),
+  CardController.removeLabel
+);
+
 module.exports = router;

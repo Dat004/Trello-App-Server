@@ -591,7 +591,110 @@ module.exports.getCardMembers = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-}
+};
+
+// [POST] /api/boards/:boardId/lists/:listId/cards/:cardId/labels
+module.exports.assignLabel = async (req, res, next) => {
+  try {
+    const { assignCardLabelSchema } = require("../utils/validationSchemas");
+    const { labelId } = assignCardLabelSchema.parse(req.body);
+    const { cardId, boardId } = req.params;
+    const board = req.board;
+
+    const boardLabel = board.labels?.id(labelId);
+    if (!boardLabel) {
+      const err = new Error("Nhãn không tồn tại trên board");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const card = await Card.findOne({ _id: cardId, deleted_at: null });
+    if (!card) {
+      const err = new Error("Card không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const alreadyAssigned = card.labels?.some(
+      (label) => label.name.toLowerCase() === boardLabel.name.toLowerCase()
+    );
+    if (alreadyAssigned) {
+      const err = new Error("Thẻ đã có nhãn này");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    card.labels.push({
+      name: boardLabel.name,
+      color: boardLabel.color,
+    });
+    await card.save();
+
+    const label = card.labels[card.labels.length - 1];
+
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "card-label-assigned",
+      data: {
+        cardId: card._id,
+        label,
+        boardLabelId: boardLabel._id,
+      },
+      socketId: req.headers["x-socket-id"],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Gán nhãn vào thẻ thành công",
+      data: { cardId: card._id, label },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// [DELETE] /api/boards/:boardId/lists/:listId/cards/:cardId/labels/:labelId
+// labelId here is the card label subdocument _id
+module.exports.removeLabel = async (req, res, next) => {
+  try {
+    const { cardId, boardId, labelId } = req.params;
+
+    const card = await Card.findOne({ _id: cardId, deleted_at: null });
+    if (!card) {
+      const err = new Error("Card không tồn tại");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    const label = card.labels?.id(labelId);
+    if (!label) {
+      const err = new Error("Nhãn không có trên thẻ này");
+      err.statusCode = 404;
+      return next(err);
+    }
+
+    label.deleteOne();
+    await card.save();
+
+    emitToRoom({
+      room: `board:${boardId}`,
+      event: "card-label-removed",
+      data: {
+        cardId: card._id,
+        labelId,
+      },
+      socketId: req.headers["x-socket-id"],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Gỡ nhãn khỏi thẻ thành công",
+      data: { cardId: card._id, labelId },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 module.exports.addChecklistItem = async (req, res, next) => {
   try {

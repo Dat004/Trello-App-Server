@@ -57,6 +57,30 @@ router.get('/:boardId/join',
   BoardController.getJoinRequests
 );
 
+// [POST] /api/boards/:boardId/labels
+router.post('/:boardId/labels',
+  protect,
+  loadContext,
+  authorize(PERMISSIONS.BOARD.EDIT),
+  BoardController.createLabel
+);
+
+// [PATCH] /api/boards/:boardId/labels/:labelId
+router.patch('/:boardId/labels/:labelId',
+  protect,
+  loadContext,
+  authorize(PERMISSIONS.BOARD.EDIT),
+  BoardController.updateLabel
+);
+
+// [DELETE] /api/boards/:boardId/labels/:labelId
+router.delete('/:boardId/labels/:labelId',
+  protect,
+  loadContext,
+  authorize(PERMISSIONS.BOARD.EDIT),
+  BoardController.deleteLabel
+);
+
 // [DELETE] /api/boards/:boardId
 router.delete("/:boardId",
   protect,
@@ -99,6 +123,9 @@ router.get("/workspace/:workspaceId",
   authorize(PERMISSIONS.WORKSPACE.VIEW),
   BoardController.getBoardsByWorkspace
 );
+
+// [GET] /api/boards/archived
+router.get("/archived", protect, BoardController.getArchivedBoards);
 
 // [GET] /api/boards/:boardId
 router.get("/:boardId",

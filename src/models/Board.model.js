@@ -116,6 +116,21 @@ const BoardSchema = new mongoose.Schema({
     default: false,
     index: true,
   },
+  labels: [
+    {
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: [50, "Tên nhãn không quá 50 ký tự"],
+      },
+      color: {
+        type: String,
+        default: "bg-blue-500",
+        trim: true,
+      },
+    },
+  ],
   created_at: {
     type: Date,
     default: Date.now,
