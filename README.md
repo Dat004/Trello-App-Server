@@ -30,6 +30,7 @@ Configure `MONGO_URI`, a strong `JWT_SECRET`, `CLIENT_URL`, Google OAuth, Cloudi
 - `npm test` — run the built-in Node.js test suite
 - `npm run seed:templates` — reset system board templates
 - `npm run seed:demo` — upsert owner/admin/member/viewer demo accounts and a sample board
+- `npm run seed:large-board` — recreate a large board for FE perf measurement (default 6×50 cards; override with `LARGE_BOARD_*` env vars)
 
 ## Security
 
