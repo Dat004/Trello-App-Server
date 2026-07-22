@@ -24,6 +24,7 @@ const generateTemplateFromAI = async (userPrompt, language = "vi") => {
         {
           "name": "Tên danh sách (ví dụ: Cần làm, Đang làm, Đã xong...)",
           "position": 0,
+          "color": "bg-blue-500",
           "cards": [
             {
               "title": "Tên thẻ mẫu",
@@ -43,8 +44,11 @@ const generateTemplateFromAI = async (userPrompt, language = "vi") => {
     3. Checklist chỉ thêm khi thật sự cần quy trình cụ thể.
     4. Labels chọn nhãn phù hợp với nội dung thẻ.
     5. Nội dung thẻ phải mang tính thực tiễn cao, không sáo rỗng.
-    6. Trả về JSON thuần túy, không bao gồm ký tự markdown hay giải thích bên ngoài.
-    7. Đảm bảo tính hợp lệ của JSON.
+    6. Mỗi list PHẢI có "color" chọn từ đúng một trong:
+       bg-green-500 | bg-blue-500 | bg-teal-500 | bg-indigo-500 | bg-purple-500 | bg-pink-500 | bg-orange-500 | bg-red-500 | bg-gray-500
+       (không dùng màu khác; ưu tiên màu khác nhau giữa các list).
+    7. Trả về JSON thuần túy, không bao gồm ký tự markdown hay giải thích bên ngoài.
+    8. Đảm bảo tính hợp lệ của JSON.
   `;
 
   const modelsToTry = getModelsToTry();

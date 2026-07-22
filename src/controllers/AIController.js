@@ -6,6 +6,7 @@ const { generateTemplateSchema, analyzeBoardSchema } = require("../utils/validat
 const { generateTemplateFromAI, analyzeBoardData } = require("../services/ai/gemini.service");
 const { logActivity } = require("../services/activity/log");
 const { ACTIVITY_ACTIONS, ENTITY_TYPES } = require("../constants/activities");
+const { pickListColor } = require("../constants/listColors");
 
 // Tạo template board bằng AI dựa trên prompt
 module.exports.generateTemplate = async (req, res, next) => {
@@ -23,10 +24,10 @@ module.exports.generateTemplate = async (req, res, next) => {
             name: `${aiTemplate.name} (AI)`,
             description: aiTemplate.description,
             category: aiTemplate.category || "project-management",
-            lists: aiTemplate.lists.map(list => ({
+            lists: aiTemplate.lists.map((list, index) => ({
                 name: list.name,
                 position: list.position || 0,
-                color: "bg-blue-600", // Mặc định
+                color: pickListColor(index, list.color),
                 example_cards: list.cards.map(card => ({
                     title: card.title,
                     description: card.description || "",
