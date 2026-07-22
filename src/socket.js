@@ -128,11 +128,21 @@ module.exports = {
                     if (!context || !can(socket.user, context, PERMISSIONS.BOARD.VIEW)) return fail();
 
                     const room = `board:${context.board._id}`;
+                    const userData = activeUsers.get(socket.id);
+                    const alreadyIn = userData?.rooms.has(room);
                     socket.join(room);
-                    activeUsers.get(socket.id).rooms.add(room);
-                    emitPresence(room, "board-presence-update", {
+                    userData.rooms.add(room);
+
+                    const presencePayload = {
                         boardId: String(context.board._id),
-                    });
+                        members: getRoomPresence(room),
+                    };
+                    // Re-joining the same room must not spam other clients.
+                    if (alreadyIn) {
+                        socket.emit("board-presence-update", presencePayload);
+                    } else {
+                        io.to(room).emit("board-presence-update", presencePayload);
+                    }
                 } catch (_error) {
                     fail("Board không hợp lệ");
                 }

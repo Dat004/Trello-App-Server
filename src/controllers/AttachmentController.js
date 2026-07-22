@@ -6,6 +6,7 @@ const {
   logAttachmentUploaded,
   logAttachmentDeleted,
 } = require("../services/activity/log");
+const { emitToRoom } = require("../utils/socketHelper");
 
 module.exports.addAttachment = async (req, res, next) => {
   try {
@@ -24,8 +25,24 @@ module.exports.addAttachment = async (req, res, next) => {
 
     await newAttachment.populate("uploaded_by", "full_name avatar");
 
-    // Log activity
     logAttachmentUploaded(newAttachment, card, req.board, req.user._id);
+
+    const payload = {
+      cardId: card._id,
+      attachment: newAttachment,
+    };
+    emitToRoom({
+      room: `board:${req.board._id}`,
+      event: "attachment-created",
+      data: payload,
+      socketId: req.headers["x-socket-id"],
+    });
+    emitToRoom({
+      room: `card:${card._id}`,
+      event: "attachment-created",
+      data: payload,
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(201).json({
       success: true,
@@ -98,6 +115,23 @@ module.exports.destroyAttachment = async (req, res, next) => {
     // Log activity
     const card = req.card;
     logAttachmentDeleted(attachment, card, req.board, req.user._id);
+
+    const payload = {
+      cardId: card._id,
+      attachmentId: attachment._id,
+    };
+    emitToRoom({
+      room: `board:${req.board._id}`,
+      event: "attachment-deleted",
+      data: payload,
+      socketId: req.headers["x-socket-id"],
+    });
+    emitToRoom({
+      room: `card:${card._id}`,
+      event: "attachment-deleted",
+      data: payload,
+      socketId: req.headers["x-socket-id"],
+    });
 
     res.status(200).json({
       success: true,

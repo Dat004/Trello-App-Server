@@ -399,16 +399,16 @@ module.exports.moveCard = async (req, res, next) => {
       });
     }
 
-    // Socket.io emit
+    // Emit string IDs so FE map lookups stay consistent across clients.
     emitToRoom({
       room: `board:${boardId}`,
       event: "card-moved",
       data: {
-        cardId: updatedCard._id,
-        listId: updatedCard.list,
+        cardId: String(updatedCard._id),
+        listId: String(updatedCard.list),
         pos: updatedCard.pos,
-        sourceListId,
-        targetListId,
+        sourceListId: String(sourceListId),
+        targetListId: String(targetListId),
       },
       socketId: req.headers["x-socket-id"],
     });
